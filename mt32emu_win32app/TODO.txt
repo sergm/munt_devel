@@ -1,0 +1,10 @@
+MT32Emu WinMM Application TODO list:
+************************************
+
+* Some sort of user interface needed: configurable parameters such as Sample Rate, Buffer Size, Master Volume / amp gain, MIDI-In port as a minimum have to be read form the registry or ini file and set via a dialog box
+
+* the possibility to reset synth engine on-the-fly
+
+* the possibility to do wave recordings
+
+* the possibility to start as a system service

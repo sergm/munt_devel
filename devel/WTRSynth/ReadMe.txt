@@ -1,0 +1,1 @@
+Filtered squarewave generation using cosine waves on slopes

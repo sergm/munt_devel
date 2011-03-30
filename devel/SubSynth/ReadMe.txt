@@ -1,0 +1,1 @@
+Filtered squarewave generation using 4-stage bi-directional single-pole IIR filter with resonance emulated

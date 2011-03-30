@@ -1,0 +1,29 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 10.00
+# Visual C++ Express 2008
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "mt32emu_win32app", "mt32emu_win32app.vcproj", "{C40C01FA-FD04-443D-B1A5-805D1EE10753}"
+	ProjectSection(ProjectDependencies) = postProject
+		{063A149D-E48C-499B-B13F-7A70C140A662} = {063A149D-E48C-499B-B13F-7A70C140A662}
+	EndProjectSection
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "mt32emu", "..\mt32emu\mt32emu_msvc7.vcproj", "{063A149D-E48C-499B-B13F-7A70C140A662}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Win32 = Debug|Win32
+		Release|Win32 = Release|Win32
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{C40C01FA-FD04-443D-B1A5-805D1EE10753}.Debug|Win32.ActiveCfg = Debug|Win32
+		{C40C01FA-FD04-443D-B1A5-805D1EE10753}.Debug|Win32.Build.0 = Debug|Win32
+		{C40C01FA-FD04-443D-B1A5-805D1EE10753}.Release|Win32.ActiveCfg = Release|Win32
+		{C40C01FA-FD04-443D-B1A5-805D1EE10753}.Release|Win32.Build.0 = Release|Win32
+		{063A149D-E48C-499B-B13F-7A70C140A662}.Debug|Win32.ActiveCfg = Debug|Win32
+		{063A149D-E48C-499B-B13F-7A70C140A662}.Debug|Win32.Build.0 = Debug|Win32
+		{063A149D-E48C-499B-B13F-7A70C140A662}.Release|Win32.ActiveCfg = Release|Win32
+		{063A149D-E48C-499B-B13F-7A70C140A662}.Release|Win32.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
