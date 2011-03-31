@@ -3,112 +3,180 @@
 
 const static int MAX_SAMPLES = 44100;
 const static float SampleRate = 44100.f;
-const static float WGAMP = 16384.f;
+const static float WGAMP = 15668.f;
 const static float PI = 3.141592654f;
 const static float PI2 = 6.283185307f;
+const static float RESAMPFACTOR = 512.0f;
+const static float RESAMPMAX = 1.75f;
+const static float RESAMPFADE = 0.1f;
 static _int16 carrier[MAX_SAMPLES];
 static _int16 modulator[MAX_SAMPLES];
 
-int waveform, filtval;
-float pulsewidth, freq, cutoff, resonance_factor;
+int waveform, cutoff, pulseWidth, resonance;
+float freq;
 
 int generate_samples(_int16 samples[])
 {
-	float waveCntr = 0.f;
+	float wavePos = 0.f;
 	float sample = 0.f;
+	float resAmp = powf(RESAMPFACTOR, -(1.0f - resonance / 30.0f));
 
-	//	init deltas
-	float resonanceLen = SampleRate / cutoff;
+	// Init internal values
+	int pulseWidthVal = int(2.56f * pulseWidth);
+	int cutoffVal = int(2.56f * cutoff);
+
+	// Wave lenght in samples
 	float waveLen = SampleRate / freq;
-	float cosineLen = (waveLen * (100 - filtval) + 2 * (filtval - 50)) / 100.f;
+
+	// Anti-aliasing feature
+	if (waveLen < 4.0f) {
+		waveLen = 4.0f;
+	}
+
+	// Init wavePos
+	float cosineLen = 0.5f * waveLen;
+	if (cutoffVal > 128) {
+		float ft = (cutoffVal - 128) / 127.0f;
+		cosineLen *= expf(-2.162823f * ft);
+	}
+
+	// Anti-aliasing feature
+	if (cosineLen < 2.0f) {
+		cosineLen = 2.0f;
+		resAmp = 0.0f;
+	}
+
+	// Start playing at the middle of 1st cosine segment
+	wavePos = 0.5f * cosineLen;
+
+	// Ratio of negative segment to waveLen
 	float pulseLen = 0.5f;
-	if (pulsewidth > 50) {
-		pulseLen -= 0.3734694f * (pulsewidth - 50) / 50.0f;
+	if (pulseWidthVal > 128) {
+		// Formula determined from sample analysis.
+		float pt = 0.5f / 127.0f * (pulseWidthVal - 128);
+		pulseLen += (1.239f - pt) * pt;
 	}
 	pulseLen *= waveLen;
-	float hLen = pulseLen - cosineLen;
-	float lLen = waveLen - hLen - 2 * cosineLen;
+
+	float lLen = pulseLen - cosineLen;
+
+	// Ignore pulsewidths too high for given freq
+	if (lLen < 0.0f) {
+		lLen = 0.0f;
+	}
+
+	// Ignore pulsewidths too high for given freq and cutoff
+	float hLen = waveLen - lLen - 2 * cosineLen;
+	if (hLen < 0.0f) {
+		hLen = 0.0f;
+	}
+
+	// Correct resAmp for cutoff in range 50..60
+	if (cutoffVal < 158) {
+		resAmp *= (1.0f - (158 - cutoffVal) / 30.0f);
+	}
 
 	int t;
 	for(t = 0; t < MAX_SAMPLES; t++) {
 		// filtered square wave with 2 cosine waves on slopes
 
 		// 1st cosine segment
-		if (waveCntr < cosineLen) {
-			sample = -cosf(PI * waveCntr / cosineLen);
-
-			// add 2nd overlapped cosine segment
-			if ((lLen < 0) && (waveCntr < -lLen))
-//				sample += 1.f + cosf(PI * (waveLen + waveCntr - (cosineLen + hLen)) / cosineLen); // slightly optimized
-				sample += 1.f + cosf(PI * (waveCntr + lLen - cosineLen) / cosineLen);
-		} else 
+		if (wavePos < cosineLen) {
+			sample = -cosf(PI * wavePos / cosineLen);
+		} else
 
 		// high linear segment
-		if (waveCntr < (cosineLen + hLen)) {
+		if (wavePos < (cosineLen + hLen)) {
 			sample = 1.f;
-		} else 
+		} else
 
 		// 2nd cosine segment
-		if (waveCntr < (2 * cosineLen + hLen)) {
-			sample = cosf(PI * (waveCntr - (cosineLen + hLen)) / cosineLen);
+		if (wavePos < (2 * cosineLen + hLen)) {
+			sample = cosf(PI * (wavePos - (cosineLen + hLen)) / cosineLen);
 		} else {
 
 		// low linear segment
 			sample = -1.f;
 		}
 
-		waveCntr++;
-		if (waveCntr > waveLen)
-			waveCntr -= waveLen;
+		if (cutoffVal < 128) {
+
+			// Attenuate samples below cutoff 50 another way
+			// Found by sample analysis
+			sample *= expf(0.693147181f * -0.048820569f * (128 - cutoffVal));
+		} else {
+
+			// Add resonance sine. Effective for cutoff > 50 only
+			float resSample = 1.0f;
+			float resAmpFade = 0.0f;
+
+			// wavePos relative to the middle of cosine segment
+			float relWavePos = wavePos - 0.5f * cosineLen;
+
+			if (relWavePos < 0.0f) {
+				relWavePos += waveLen;
+			}
+
+			// negative segments
+			if (!(relWavePos < (cosineLen + hLen))) {
+				resSample = -resSample;
+				relWavePos -= cosineLen + hLen;
+			}
+
+			// wavePos relative to the middle of cosine segment
+			// can be negative
+			float relWavePosÑ = wavePos - 0.5f * cosineLen;
+
+			if (!(wavePos < (cosineLen + hLen))) {
+				relWavePosÑ -= cosineLen + hLen;
+			}
+
+			// Resonance sine WG
+			resSample *= sinf(PI * relWavePos / cosineLen);
+
+			// Resonance sine amp
+			resAmpFade = RESAMPMAX - RESAMPFADE * (relWavePos / cosineLen);
+
+			// Fading to zero to avoid break
+			if (relWavePosÑ < 0.0f) {
+				resAmpFade *= -relWavePosÑ / (0.5f * cosineLen);
+			}
+
+			sample += resSample * resAmp * resAmpFade;
+		}
 
 		// sawtooth waves
 		if ((waveform & 1) != 0) {
-			sample *= cosf(6.283185307f * waveCntr / waveLen);
+			sample *= cosf(PI2 * wavePos / waveLen);
 		}
+
+		wavePos++;
+		if (wavePos > waveLen)
+			wavePos -= waveLen;
+
+		// TVA emulation just for testings
+		sample *= (1.0f - 0.5f * resonance / 30.0f);
 
 		//	done
 		samples[t] = _int16(sample * WGAMP);
-	}
-
-//	+ resonance
-	waveCntr = 0;
-	for(t = 0; t < MAX_SAMPLES; t++) {
-		sample = samples[t];
-		waveCntr++;
-		float resonance_fade;
-		resonance_fade = 8.f;
-		float phase = 0.f;
-		if (waveCntr < waveLen)
-			phase += PI;
-		sample = sample / (1.f + .2f * resonance_factor) +
-			resonance_factor * 1023.f * sinf(phase + PI2 * waveCntr /
-			resonanceLen) * resonanceLen / (resonanceLen + resonance_fade *
-			waveCntr);
-		samples[t] = _int16(sample);
-
-		waveCntr++;
-		if (waveCntr > waveLen)
-			waveCntr -= waveLen;
 	}
 	return t;
 }
 
 int _tmain(int argc, _TCHAR* argv[])
 {
-	waveform = 01;
-	pulsewidth = 100.f;
+	waveform = 0;
 	freq = 45.f;
-	filtval = 94;
-	cutoff = expf((filtval - 50) * 0.110903549f) * freq;
-	resonance_factor = 0.f;
+	pulseWidth = 0;
+	cutoff = 65;
+	resonance = 30;
 	generate_samples(carrier);
 
 	waveform = 0;
-	pulsewidth = 0.f;
 	freq = 5000.f;
-	filtval = 60;
-	cutoff = expf((filtval - 50) * 0.110903549f) * freq;
-	resonance_factor = 0.f;
+	pulseWidth = 100;
+	cutoff = 50;
+	resonance = 0;
 	generate_samples(modulator);
 
 	for(int t = 0; t < MAX_SAMPLES; t++) {
