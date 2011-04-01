@@ -19,7 +19,7 @@
 #include "..\mt32emu\src\mt32emu.h"
 
 #if MT32EMU_USE_EXTINT == 1
-#include "..\mt32emu\src\ExternalInterface.h"
+#include "..\mt32emu\src\externalInterface.h"
 #endif
 
 #include "MidiSynth.h"
