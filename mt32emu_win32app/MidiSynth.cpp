@@ -79,7 +79,7 @@ void CALLBACK MidiInProc(HMIDIIN hMidiIn, UINT wMsg, DWORD_PTR dwInstance, DWORD
 	}
 	if (wMsg != MIM_DATA)
 		return;
-	midiStream.PutMessage(dwParam1, midiSynth.bufferStartS + DWORD(midiSynth.sampleRate / 1000.f * (GetTickCount() - midiSynth.bufferStartTS)));
+	midiStream.PutMessage(dwParam1, midiSynth.bufferStartS + DWORD(midiSynth.sampleRate / 1000.f * (clock() - midiSynth.bufferStartTS)));
 }
 
 void CALLBACK waveOutProc(HWAVEOUT hWaveOut, UINT uMsg, DWORD_PTR dwInstance, DWORD_PTR dwParam1, DWORD_PTR dwParam2)
@@ -91,7 +91,7 @@ void CALLBACK waveOutProc(HWAVEOUT hWaveOut, UINT uMsg, DWORD_PTR dwInstance, DW
 		return;
 
 	midiSynth.bufferStartS = midiSynth.playCursor + midiSynth.len;
-	midiSynth.bufferStartTS = GetTickCount();
+	midiSynth.bufferStartTS = clock();
 	LPWAVEHDR pWaveHdr = LPWAVEHDR(dwParam1);
 
 	midiSynth.Render((Bit16s*)pWaveHdr->lpData);
