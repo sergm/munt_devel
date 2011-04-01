@@ -2,11 +2,7 @@
 
 namespace MT32Emu {
 
-static MidiSynth midiSynth;
-
-MidiSynth* GetMidiSynth() {
-	return &midiSynth;
-}
+MidiSynth *midiSynth;
 
 class MidiStream {
 private:
@@ -64,14 +60,14 @@ private:
 	MIDIHDR MidiInHdr;
 
 static void CALLBACK MidiInProc(HMIDIIN hMidiIn, UINT wMsg, DWORD_PTR dwInstance, DWORD_PTR dwParam1, DWORD_PTR dwParam2) {
-	if (midiSynth.pendingClose)
+	if (midiSynth->pendingClose)
 		return;
 
 	LPMIDIHDR pMIDIhdr = (LPMIDIHDR)dwParam1;
 	if (wMsg == MIM_LONGDATA) {
-		WaitForSingleObject(midiSynth.sysexEvent, INFINITE);
-		midiSynth.synth->playSysex((Bit8u*)pMIDIhdr->lpData, pMIDIhdr->dwBytesRecorded);
-		SetEvent(midiSynth.sysexEvent);
+		WaitForSingleObject(midiSynth->sysexEvent, INFINITE);
+		midiSynth->synth->playSysex((Bit8u*)pMIDIhdr->lpData, pMIDIhdr->dwBytesRecorded);
+		SetEvent(midiSynth->sysexEvent);
 		std::cout << "Play SysEx message " << pMIDIhdr->dwBytesRecorded << " bytes\n";
 
 		//	Add SysEx Buffer for reuse
@@ -83,7 +79,7 @@ static void CALLBACK MidiInProc(HMIDIIN hMidiIn, UINT wMsg, DWORD_PTR dwInstance
 	}
 	if (wMsg != MIM_DATA)
 		return;
-	midiStream.PutMessage(dwParam1, midiSynth.bufferStartS + DWORD(midiSynth.sampleRate / 1000.f * (clock() - midiSynth.bufferStartTS)));
+	midiStream.PutMessage(dwParam1, midiSynth->bufferStartS + DWORD(midiSynth->sampleRate / 1000.f * (clock() - midiSynth->bufferStartTS)));
 }
 
 public:
@@ -91,14 +87,14 @@ public:
 		int wResult;
 
 		//	Init midiIn port
-		wResult = midiInOpen(&hMidiIn, midiSynth.midiDevID, (DWORD_PTR)MidiInProc, (DWORD_PTR)&midiSynth, CALLBACK_FUNCTION);
+		wResult = midiInOpen(&hMidiIn, midiSynth->midiDevID, (DWORD_PTR)MidiInProc, (DWORD_PTR)&midiSynth, CALLBACK_FUNCTION);
 		if (wResult != MMSYSERR_NOERROR) {
 			MessageBox(NULL, L"Failed to open midi input device", NULL, MB_OK | MB_ICONEXCLAMATION);
 			return 5;
 		}
 
 		//	Prepare SysEx midiIn buffer
-		MidiInHdr.lpData = (LPSTR)midiSynth.sysexbuf;
+		MidiInHdr.lpData = (LPSTR)midiSynth->sysexbuf;
 		MidiInHdr.dwBufferLength = 4096;
 		MidiInHdr.dwFlags = 0L;
 		wResult = midiInPrepareHeader(hMidiIn, &MidiInHdr, sizeof(MIDIHDR));
@@ -155,11 +151,11 @@ static void CALLBACK waveOutProc(HWAVEOUT hWaveOut, UINT uMsg, DWORD_PTR dwInsta
 	if (uMsg != WOM_DONE)
 		return;
 
-	if (midiSynth.pendingClose)
+	if (midiSynth->pendingClose)
 		return;
 
 	LPWAVEHDR pWaveHdr = LPWAVEHDR(dwParam1);
-	midiSynth.Render((Bit16s*)pWaveHdr->lpData);
+	midiSynth->Render((Bit16s*)pWaveHdr->lpData);
 
 	if (waveOutWrite(hWaveOut, pWaveHdr, sizeof(WAVEHDR)) != MMSYSERR_NOERROR) {
 		MessageBox(NULL, L"Failed to write block to device", NULL, MB_OK | MB_ICONEXCLAMATION);
@@ -169,7 +165,7 @@ static void CALLBACK waveOutProc(HWAVEOUT hWaveOut, UINT uMsg, DWORD_PTR dwInsta
 public:
 	int Init() {
 		int wResult;
-		PCMWAVEFORMAT wFormat = {WAVE_FORMAT_PCM, 2, midiSynth.sampleRate, midiSynth.sampleRate * 4, 4, 16};
+		PCMWAVEFORMAT wFormat = {WAVE_FORMAT_PCM, 2, midiSynth->sampleRate, midiSynth->sampleRate * 4, 4, 16};
 
 		//	Open waveout device
 		wResult = waveOutOpen(&hWaveOut, WAVE_MAPPER, (LPWAVEFORMATEX)&wFormat, (DWORD_PTR)waveOutProc, (DWORD_PTR)&midiSynth, CALLBACK_FUNCTION);
@@ -179,8 +175,8 @@ public:
 		}
 
 		//	Prepare 2 Headers
-		WaveHdr1.lpData = (LPSTR)midiSynth.stream1;
-		WaveHdr1.dwBufferLength = 4 * midiSynth.len;
+		WaveHdr1.lpData = (LPSTR)midiSynth->stream1;
+		WaveHdr1.dwBufferLength = 4 * midiSynth->len;
 		WaveHdr1.dwFlags = 0L;
 		WaveHdr1.dwLoops = 0L;
 		wResult = waveOutPrepareHeader(hWaveOut, &WaveHdr1, sizeof(WAVEHDR));
@@ -189,8 +185,8 @@ public:
 			return 3;
 		}
 
-		WaveHdr2.lpData = (LPSTR)midiSynth.stream2;
-		WaveHdr2.dwBufferLength = 4 * midiSynth.len;
+		WaveHdr2.lpData = (LPSTR)midiSynth->stream2;
+		WaveHdr2.dwBufferLength = 4 * midiSynth->len;
 		WaveHdr2.dwFlags = 0L;
 		WaveHdr2.dwLoops = 0L;
 		wResult = waveOutPrepareHeader(hWaveOut, &WaveHdr2, sizeof(WAVEHDR));
@@ -261,7 +257,7 @@ public:
 
 int MT32_Report(void *userData, MT32Emu::ReportType type, const void *reportData) {
 #if MT32EMU_USE_EXTINT == 1
-	midiSynth.mt32emuExtInt->handleReport(midiSynth.synth, type, reportData);
+	midiSynth->mt32emuExtInt->handleReport(midiSynth->synth, type, reportData);
 #endif
 	return 0;
 }
@@ -329,6 +325,7 @@ void MidiSynth::Render(Bit16s *startpos) {
 }
 
 MidiSynth::MidiSynth() {
+	midiSynth = this;
 	sampleRate = 32000;
 	latency = 150;
 	len = UINT(sampleRate * latency / 2000.f);
