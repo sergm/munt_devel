@@ -113,6 +113,7 @@ int generate_samples(_int16 samples[])
 			// wavePos relative to the middle of cosine segment
 			float relWavePos = wavePos - 0.5f * cosineLen;
 
+			// Always positive
 			if (relWavePos < 0.0f) {
 				relWavePos += waveLen;
 			}
@@ -124,7 +125,7 @@ int generate_samples(_int16 samples[])
 			}
 
 			// wavePos relative to the middle of cosine segment
-			// can be negative
+			// Negative for first half of cosine segment
 			float relWavePosC = wavePos - 0.5f * cosineLen;
 
 			if (!(wavePos < (cosineLen + hLen))) {
@@ -137,7 +138,7 @@ int generate_samples(_int16 samples[])
 			// Resonance sine amp
 			resAmpFade = RESAMPMAX - RESAMPFADE * (relWavePos / cosineLen);
 
-			// Fading to zero to avoid break
+			// Fading to zero while in first half of cosine segment to avoid breaks in the wave
 			if (relWavePosC < 0.0f) {
 				resAmpFade *= -relWavePosC / (0.5f * cosineLen);
 			}
