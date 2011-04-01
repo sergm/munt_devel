@@ -1,8 +1,8 @@
 #include "stdafx.h"
 #include "math.h"
 
-const static int MAX_SAMPLES = 44100;
-const static float SampleRate = 44100.f;
+const static int MAX_SAMPLES = 32000;
+const static float SampleRate = 32000.f;
 const static float WGAMP = 15668.f;
 const static float PI = 3.141592654f;
 const static float PI2 = 6.283185307f;
@@ -167,7 +167,7 @@ int generate_samples(_int16 samples[])
 int _tmain(int argc, _TCHAR* argv[])
 {
 	waveform = 0;
-	freq = 45.f;
+	freq = 32.65f;
 	pulseWidth = 0;
 	cutoff = 65;
 	resonance = 30;
@@ -184,8 +184,12 @@ int _tmain(int argc, _TCHAR* argv[])
 //		carrier[t] = carrier[t] * modulator[t] >> 14;
 	}
 
-	HFILE h = _lopen("C:/DOWNLOADS/1.wav", OF_READWRITE);
-	_llseek(h, 44, FILE_BEGIN);
-	_lwrite(h, (LPCCH)carrier, MAX_SAMPLES << 1);
-	_lclose(h);
+	FILE *file;
+	file = fopen("Output.raw", "wb");
+	if (file == NULL) {
+//		std::cout << "File cannot be opened\n";
+		return 1;
+	}
+	fwrite(carrier, 2, MAX_SAMPLES, file);
+	fclose(file);
 }
