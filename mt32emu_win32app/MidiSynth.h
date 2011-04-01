@@ -7,25 +7,23 @@ namespace MT32Emu {
 
 class MidiSynth {
 private:
-	unsigned int latency;
-
-public:
 	unsigned int sampleRate;
 	unsigned int len;
 	unsigned int midiDevID;
+	unsigned int latency;
 	int masterVolume;
-
-	Bit8u sysexbuf[4096];
-	char *pathToROMfiles;
 
 	Bit16s *stream1;
 	Bit16s *stream2;
+	char *pathToROMfiles;
 
 	bool pendingClose;
 	DWORD bufferStartTS, bufferStartS;
 	DWORD playCursor;
 
 	Synth *synth;
+
+public:
 
 #if MT32EMU_USE_EXTINT == 1
 	MT32Emu::ExternalInterface *mt32emuExtInt;
@@ -35,9 +33,13 @@ public:
 	int Init();
 	int Close();
 	int Reset();
+	void Render(Bit16s *bufpos);
+	void PlaySysex(Bit8u *bufpos, DWORD len);
 	void SetMasterVolume(UINT pMasterVolume);
 	void SetParameters(UINT pSampleRate, UINT pmidiDevID, UINT platency);
-	void Render(Bit16s *bufpos);
+	bool IsPendingClose();
+	DWORD GetTimeStamp();
+	void handleReport(MT32Emu::ReportType type, const void *reportData);
 };
 
 }

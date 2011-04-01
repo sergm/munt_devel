@@ -85,15 +85,16 @@ class MidiInWin32 {
 private:
 	HMIDIIN hMidiIn;
 	MIDIHDR MidiInHdr;
+	Bit8u sysexbuf[4096];
 
 static void CALLBACK MidiInProc(HMIDIIN hMidiIn, UINT wMsg, DWORD_PTR dwInstance, DWORD_PTR dwParam1, DWORD_PTR dwParam2) {
-	if (midiSynth->pendingClose)
+	if (midiSynth->IsPendingClose())
 		return;
 
 	LPMIDIHDR pMIDIhdr = (LPMIDIHDR)dwParam1;
 	if (wMsg == MIM_LONGDATA) {
 		synthEvent.Wait();
-		midiSynth->synth->playSysex((Bit8u*)pMIDIhdr->lpData, pMIDIhdr->dwBytesRecorded);
+		midiSynth->PlaySysex((Bit8u*)pMIDIhdr->lpData, pMIDIhdr->dwBytesRecorded);
 		synthEvent.Release();
 		std::cout << "Play SysEx message " << pMIDIhdr->dwBytesRecorded << " bytes\n";
 
@@ -106,22 +107,22 @@ static void CALLBACK MidiInProc(HMIDIIN hMidiIn, UINT wMsg, DWORD_PTR dwInstance
 	}
 	if (wMsg != MIM_DATA)
 		return;
-	midiStream.PutMessage(dwParam1, midiSynth->bufferStartS + DWORD(midiSynth->sampleRate / 1000.f * (clock() - midiSynth->bufferStartTS)));
+	midiStream.PutMessage(dwParam1, midiSynth->GetTimeStamp());
 }
 
 public:
-	int Init() {
+	int Init(unsigned int midiDevID) {
 		int wResult;
 
 		//	Init midiIn port
-		wResult = midiInOpen(&hMidiIn, midiSynth->midiDevID, (DWORD_PTR)MidiInProc, (DWORD_PTR)&midiSynth, CALLBACK_FUNCTION);
+		wResult = midiInOpen(&hMidiIn, midiDevID, (DWORD_PTR)MidiInProc, (DWORD_PTR)&midiSynth, CALLBACK_FUNCTION);
 		if (wResult != MMSYSERR_NOERROR) {
 			MessageBox(NULL, L"Failed to open midi input device", NULL, MB_OK | MB_ICONEXCLAMATION);
 			return 5;
 		}
 
 		//	Prepare SysEx midiIn buffer
-		MidiInHdr.lpData = (LPSTR)midiSynth->sysexbuf;
+		MidiInHdr.lpData = (LPSTR)sysexbuf;
 		MidiInHdr.dwBufferLength = 4096;
 		MidiInHdr.dwFlags = 0L;
 		wResult = midiInPrepareHeader(hMidiIn, &MidiInHdr, sizeof(MIDIHDR));
@@ -178,7 +179,7 @@ static void CALLBACK waveOutProc(HWAVEOUT hWaveOut, UINT uMsg, DWORD_PTR dwInsta
 	if (uMsg != WOM_DONE)
 		return;
 
-	if (midiSynth->pendingClose)
+	if (midiSynth->IsPendingClose())
 		return;
 
 	LPWAVEHDR pWaveHdr = LPWAVEHDR(dwParam1);
@@ -190,9 +191,9 @@ static void CALLBACK waveOutProc(HWAVEOUT hWaveOut, UINT uMsg, DWORD_PTR dwInsta
 }
 
 public:
-	int Init() {
+	int Init(Bit16s *stream1, Bit16s *stream2, unsigned int len, unsigned int sampleRate) {
 		int wResult;
-		PCMWAVEFORMAT wFormat = {WAVE_FORMAT_PCM, 2, midiSynth->sampleRate, midiSynth->sampleRate * 4, 4, 16};
+		PCMWAVEFORMAT wFormat = {WAVE_FORMAT_PCM, 2, sampleRate, sampleRate * 4, 4, 16};
 
 		//	Open waveout device
 		wResult = waveOutOpen(&hWaveOut, WAVE_MAPPER, (LPWAVEFORMATEX)&wFormat, (DWORD_PTR)waveOutProc, (DWORD_PTR)&midiSynth, CALLBACK_FUNCTION);
@@ -202,8 +203,8 @@ public:
 		}
 
 		//	Prepare 2 Headers
-		WaveHdr1.lpData = (LPSTR)midiSynth->stream1;
-		WaveHdr1.dwBufferLength = 4 * midiSynth->len;
+		WaveHdr1.lpData = (LPSTR)stream1;
+		WaveHdr1.dwBufferLength = 4 * len;
 		WaveHdr1.dwFlags = 0L;
 		WaveHdr1.dwLoops = 0L;
 		wResult = waveOutPrepareHeader(hWaveOut, &WaveHdr1, sizeof(WAVEHDR));
@@ -212,8 +213,8 @@ public:
 			return 3;
 		}
 
-		WaveHdr2.lpData = (LPSTR)midiSynth->stream2;
-		WaveHdr2.dwBufferLength = 4 * midiSynth->len;
+		WaveHdr2.lpData = (LPSTR)stream2;
+		WaveHdr2.dwBufferLength = 4 * len;
 		WaveHdr2.dwFlags = 0L;
 		WaveHdr2.dwLoops = 0L;
 		wResult = waveOutPrepareHeader(hWaveOut, &WaveHdr2, sizeof(WAVEHDR));
@@ -282,11 +283,15 @@ public:
 	}
 } waveOut;
 
-int MT32_Report(void *userData, MT32Emu::ReportType type, const void *reportData) {
+int MT32_Report(void *userData, ReportType type, const void *reportData) {
 #if MT32EMU_USE_EXTINT == 1
-	midiSynth->mt32emuExtInt->handleReport(midiSynth->synth, type, reportData);
+	midiSynth->handleReport(type, reportData);
 #endif
 	return 0;
+}
+
+void MidiSynth::handleReport(ReportType type, const void *reportData) {
+	mt32emuExtInt->handleReport(synth, type, reportData);
 }
 
 void MidiSynth::Render(Bit16s *startpos) {
@@ -389,10 +394,10 @@ int MidiSynth::Init() {
 	}
 #endif
 
-	wResult = waveOut.Init();
+	wResult = waveOut.Init(stream1, stream2, len, sampleRate);
 	if (wResult) return wResult;
 
-	wResult = midiIn.Init();
+	wResult = midiIn.Init(midiDevID);
 	if (wResult) return wResult;
 
 	//	Start playing 2 streams
@@ -448,6 +453,18 @@ int MidiSynth::Reset() {
 	if (wResult) return wResult;
 
 	return wResult;
+}
+
+bool MidiSynth::IsPendingClose() {
+	return pendingClose;
+}
+
+void MidiSynth::PlaySysex(Bit8u *bufpos, DWORD len) {
+	synth->playSysex(bufpos, len);
+}
+
+DWORD MidiSynth::GetTimeStamp() {
+	return bufferStartS + DWORD(sampleRate / 1000.f * (clock() - bufferStartTS));
 }
 
 int MidiSynth::Close() {

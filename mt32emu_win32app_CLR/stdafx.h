@@ -6,9 +6,11 @@
 // TODO: reference additional headers your program requires here
 #include <windows.h>
 #include <iostream>
-#include "time.h"
+#include <time.h>
 #include "mt32emu.h"
+
 #if MT32EMU_USE_EXTINT == 1
 #include "externalInterface.h"
 #endif
+
 #include "MidiSynth.h"
