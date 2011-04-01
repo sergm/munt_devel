@@ -8,6 +8,6 @@
 #include <iostream>
 #include "mt32emu.h"
 #if MT32EMU_USE_EXTINT == 1
-#include "ExternalInterface.h"
+#include "externalInterface.h"
 #endif
 #include "MidiSynth.h"
