@@ -54,6 +54,30 @@ public:
 	}
 } midiStream;
 
+class SynthEventWin32 {
+private:
+	HANDLE hEvent;
+
+public:
+	int Init() {
+		hEvent = CreateEvent(NULL, false, true, NULL);
+		if (hEvent == NULL) return 1;
+		return 0;
+	}
+
+	void Close() {
+		CloseHandle(hEvent);
+	}
+
+	void Wait() {
+		WaitForSingleObject(hEvent, INFINITE);
+	}
+
+	void Release() {
+		SetEvent(hEvent);
+	}
+} synthEvent;
+
 class MidiInWin32 {
 private:
 	HMIDIIN hMidiIn;
@@ -65,9 +89,9 @@ static void CALLBACK MidiInProc(HMIDIIN hMidiIn, UINT wMsg, DWORD_PTR dwInstance
 
 	LPMIDIHDR pMIDIhdr = (LPMIDIHDR)dwParam1;
 	if (wMsg == MIM_LONGDATA) {
-		WaitForSingleObject(midiSynth->sysexEvent, INFINITE);
+		synthEvent.Wait();
 		midiSynth->synth->playSysex((Bit8u*)pMIDIhdr->lpData, pMIDIhdr->dwBytesRecorded);
-		SetEvent(midiSynth->sysexEvent);
+		synthEvent.Release();
 		std::cout << "Play SysEx message " << pMIDIhdr->dwBytesRecorded << " bytes\n";
 
 		//	Add SysEx Buffer for reuse
@@ -283,9 +307,9 @@ void MidiSynth::Render(Bit16s *startpos) {
 			break;
 //		if (playlen < 0) std::cout << "Play MIDI message at neg timeStamp " << timeStamp << ", playCursor " << playCursor << " samples\n";
 		if (playlen > 0) {		// if midiMessage with same timeStamp - skip rendering
-			WaitForSingleObject(sysexEvent, INFINITE);
+			synthEvent.Wait();
 			synth->render(bufpos, playlen);
-			SetEvent(sysexEvent);
+			synthEvent.Release();
 			playCursor += playlen;
 			bufpos += 2 * playlen;
 			buflen -= playlen;
@@ -293,16 +317,16 @@ void MidiSynth::Render(Bit16s *startpos) {
 
 		// play midiMessage
 		msg = midiStream.GetMessage();
-		WaitForSingleObject(sysexEvent, INFINITE);
+		synthEvent.Wait();
 		synth->playMsg(msg);
-		SetEvent(sysexEvent);
+		synthEvent.Release();
 //		std::cout << "Play MIDI message " << msg << " at " << timeStamp / 1000.f << " ms\n";
 	}
 
 	//	render rest of samples
-	WaitForSingleObject(sysexEvent, INFINITE);
+	synthEvent.Wait();
 	synth->render(bufpos, buflen);
-	SetEvent(sysexEvent);
+	synthEvent.Release();
 	playCursor += buflen;
 #if MT32EMU_USE_EXTINT == 1
 	if (mt32emuExtInt != NULL) {
@@ -340,7 +364,10 @@ int MidiSynth::Init() {
 	stream2 = new Bit16s[2 * len];
 
 	//	Init synth
-	sysexEvent = CreateEvent(NULL, false, true, NULL);
+	if (synthEvent.Init()) {
+		MessageBox(NULL, L"Can't create sync object", NULL, MB_OK | MB_ICONEXCLAMATION);
+		return 1;
+	}
 	synth = new Synth();
 	SynthProperties synthProp = {sampleRate, true, true, 0, 0, 0, "C:\\WINDOWS\\SYSTEM32\\",
 		NULL, MT32_Report, NULL, NULL, NULL};
@@ -401,7 +428,7 @@ int MidiSynth::Reset() {
 	wResult = waveOut.Pause();
 	if (wResult) return wResult;
 
-	WaitForSingleObject(sysexEvent, INFINITE);
+	synthEvent.Wait();
 	synth->close();
 	delete synth;
 
@@ -412,7 +439,7 @@ int MidiSynth::Reset() {
 		MessageBox(NULL, L"Can't open Synth", NULL, MB_OK | MB_ICONEXCLAMATION);
 		return 1;
 	}
-	SetEvent(sysexEvent);
+	synthEvent.Release();
 
 	wResult = waveOut.Resume();
 	if (wResult) return wResult;
@@ -446,7 +473,7 @@ int MidiSynth::Close() {
 	delete stream1;
 	delete stream2;
 
-	CloseHandle(sysexEvent);
+	synthEvent.Close();
 	return 0;
 }
 
