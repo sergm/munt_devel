@@ -16,6 +16,7 @@ public:
 	int masterVolume;
 
 	Bit8u sysexbuf[4096];
+	char *pathToROMfiles;
 
 	Bit16s *stream1;
 	Bit16s *stream2;

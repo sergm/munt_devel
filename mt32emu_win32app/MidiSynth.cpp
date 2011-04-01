@@ -61,7 +61,10 @@ private:
 public:
 	int Init() {
 		hEvent = CreateEvent(NULL, false, true, NULL);
-		if (hEvent == NULL) return 1;
+		if (hEvent == NULL) {
+			MessageBox(NULL, L"Can't create sync object", NULL, MB_OK | MB_ICONEXCLAMATION);
+			return 1;
+		}
 		return 0;
 	}
 
@@ -355,6 +358,7 @@ MidiSynth::MidiSynth() {
 	len = UINT(sampleRate * latency / 2000.f);
 	midiDevID = 0;
 	masterVolume = 256;
+	pathToROMfiles = "C:/WINDOWS/SYSTEM32/";
 }
 
 int MidiSynth::Init() {
@@ -365,11 +369,10 @@ int MidiSynth::Init() {
 
 	//	Init synth
 	if (synthEvent.Init()) {
-		MessageBox(NULL, L"Can't create sync object", NULL, MB_OK | MB_ICONEXCLAMATION);
 		return 1;
 	}
 	synth = new Synth();
-	SynthProperties synthProp = {sampleRate, true, true, 0, 0, 0, "C:\\WINDOWS\\SYSTEM32\\",
+	SynthProperties synthProp = {sampleRate, true, true, 0, 0, 0, pathToROMfiles,
 		NULL, MT32_Report, NULL, NULL, NULL};
 	if (!synth->open(synthProp)) {
 		MessageBox(NULL, L"Can't open Synth", NULL, MB_OK | MB_ICONEXCLAMATION);
@@ -433,7 +436,7 @@ int MidiSynth::Reset() {
 	delete synth;
 
 	synth = new Synth();
-	SynthProperties synthProp = {sampleRate, true, true, 0, 0, 0, "C:\\WINDOWS\\SYSTEM32\\",
+	SynthProperties synthProp = {sampleRate, true, true, 0, 0, 0, pathToROMfiles,
 		NULL, MT32_Report, NULL, NULL, NULL};
 	if (!synth->open(synthProp)) {
 		MessageBox(NULL, L"Can't open Synth", NULL, MB_OK | MB_ICONEXCLAMATION);
