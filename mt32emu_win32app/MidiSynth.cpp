@@ -58,8 +58,12 @@ public:
 	}
 } midiStream;
 
-void CALLBACK MidiInProc(HMIDIIN hMidiIn, UINT wMsg, DWORD_PTR dwInstance, DWORD_PTR dwParam1, DWORD_PTR dwParam2)
-{
+class MidiInWin32 {
+private:
+	HMIDIIN hMidiIn;
+	MIDIHDR MidiInHdr;
+
+static void CALLBACK MidiInProc(HMIDIIN hMidiIn, UINT wMsg, DWORD_PTR dwInstance, DWORD_PTR dwParam1, DWORD_PTR dwParam2) {
 	if (midiSynth.pendingClose)
 		return;
 
@@ -81,50 +85,6 @@ void CALLBACK MidiInProc(HMIDIIN hMidiIn, UINT wMsg, DWORD_PTR dwInstance, DWORD
 		return;
 	midiStream.PutMessage(dwParam1, midiSynth.bufferStartS + DWORD(midiSynth.sampleRate / 1000.f * (clock() - midiSynth.bufferStartTS)));
 }
-
-void CALLBACK waveOutProc(HWAVEOUT hWaveOut, UINT uMsg, DWORD_PTR dwInstance, DWORD_PTR dwParam1, DWORD_PTR dwParam2)
-{
-	if (uMsg != WOM_DONE)
-		return;
-
-	if (midiSynth.pendingClose)
-		return;
-
-	midiSynth.bufferStartS = midiSynth.playCursor + midiSynth.len;
-	midiSynth.bufferStartTS = clock();
-	LPWAVEHDR pWaveHdr = LPWAVEHDR(dwParam1);
-
-	midiSynth.Render((Bit16s*)pWaveHdr->lpData);
-
-	// Apply master volume
-	for (Bit16s *p = (Bit16s*)pWaveHdr->lpData; p < (Bit16s*)pWaveHdr->lpData + 2 * midiSynth.len; p++) {
-		int newSample = (*p * midiSynth.masterVolume) >> 8;
-
-		if (newSample > 32767)
-			newSample = 32767;
-
-		if (newSample < -32768)
-			newSample = -32768;
-
-		*p = newSample;
-	}
-
-	if (waveOutWrite(hWaveOut, pWaveHdr, sizeof(WAVEHDR)) != MMSYSERR_NOERROR) {
-		MessageBox(NULL, L"Failed to write block to device", NULL, MB_OK | MB_ICONEXCLAMATION);
-	}
-}
-
-int MT32_Report(void *userData, MT32Emu::ReportType type, const void *reportData) {
-#if MT32EMU_USE_EXTINT == 1
-	midiSynth.mt32emuExtInt->handleReport(midiSynth.synth, type, reportData);
-#endif
-	return 0;
-}
-
-class MidiInWin32 {
-private:
-	HMIDIIN hMidiIn;
-	MIDIHDR MidiInHdr;
 
 public:
 	int Init() {
@@ -183,13 +143,45 @@ public:
 	int Start() {
 		return midiInStart(hMidiIn);
 	}
-} midiInWin32;
+} midiIn;
 
 class WaveOutWin32 {
 private:
 	HWAVEOUT	hWaveOut;
 	WAVEHDR		WaveHdr1;
 	WAVEHDR		WaveHdr2;
+
+static void CALLBACK waveOutProc(HWAVEOUT hWaveOut, UINT uMsg, DWORD_PTR dwInstance, DWORD_PTR dwParam1, DWORD_PTR dwParam2) {
+	if (uMsg != WOM_DONE)
+		return;
+
+	if (midiSynth.pendingClose)
+		return;
+
+	// Set timestamp of buffer start
+	midiSynth.bufferStartS = midiSynth.playCursor + midiSynth.len;
+	midiSynth.bufferStartTS = clock();
+
+	LPWAVEHDR pWaveHdr = LPWAVEHDR(dwParam1);
+	midiSynth.Render((Bit16s*)pWaveHdr->lpData);
+
+	// Apply master volume
+	for (Bit16s *p = (Bit16s*)pWaveHdr->lpData; p < (Bit16s*)pWaveHdr->lpData + 2 * midiSynth.len; p++) {
+		int newSample = (*p * midiSynth.masterVolume) >> 8;
+
+		if (newSample > 32767)
+			newSample = 32767;
+
+		if (newSample < -32768)
+			newSample = -32768;
+
+		*p = newSample;
+	}
+
+	if (waveOutWrite(hWaveOut, pWaveHdr, sizeof(WAVEHDR)) != MMSYSERR_NOERROR) {
+		MessageBox(NULL, L"Failed to write block to device", NULL, MB_OK | MB_ICONEXCLAMATION);
+	}
+}
 
 public:
 	int Init() {
@@ -255,7 +247,7 @@ public:
 		return 0;
 	}
 
-	int Write() {
+	int Start() {
 		if (waveOutWrite(hWaveOut, &WaveHdr1, sizeof(WAVEHDR)) != MMSYSERR_NOERROR) {
 			MessageBox(NULL, L"Failed to write block to device", NULL, MB_OK | MB_ICONEXCLAMATION);
 			return 4;
@@ -282,7 +274,14 @@ public:
 		}
 		return 0;
 	}
-} waveOutWin32;
+} waveOut;
+
+int MT32_Report(void *userData, MT32Emu::ReportType type, const void *reportData) {
+#if MT32EMU_USE_EXTINT == 1
+	midiSynth.mt32emuExtInt->handleReport(midiSynth.synth, type, reportData);
+#endif
+	return 0;
+}
 
 void MidiSynth::Render(Bit16s *bufpos) {
 	DWORD msg, timeStamp;
@@ -336,7 +335,7 @@ MidiSynth::MidiSynth() {
 	masterVolume = 256;
 }
 
-int MidiSynth::Init(void) {
+int MidiSynth::Init() {
 	UINT wResult;
 
 	stream1 = new Bit16s[2 * len];
@@ -362,10 +361,10 @@ int MidiSynth::Init(void) {
 	}
 #endif
 
-	wResult = waveOutWin32.Init();
+	wResult = waveOut.Init();
 	if (wResult) return wResult;
 
-	wResult = midiInWin32.Init();
+	wResult = midiIn.Init();
 	if (wResult) return wResult;
 
 	//	Start playing 2 streams
@@ -374,14 +373,14 @@ int MidiSynth::Init(void) {
 
 	pendingClose = false;
 
-	wResult = waveOutWin32.Write();
+	wResult = waveOut.Start();
 	if (wResult) return wResult;
 
 	playCursor = 0;
 	bufferStartS = len;
 	bufferStartTS = GetTickCount();
 
-	wResult = midiInWin32.Start();
+	wResult = midiIn.Start();
 	if (wResult) return wResult;
 	
 	return 0;
@@ -401,7 +400,7 @@ void MidiSynth::SetParameters(UINT pSampleRate, UINT pMidiDevID, UINT platency) 
 int MidiSynth::Reset() {
 	UINT wResult;
 
-	wResult = waveOutWin32.Pause();
+	wResult = waveOut.Pause();
 	if (wResult) return wResult;
 
 	WaitForSingleObject(sysexEvent, INFINITE);
@@ -417,7 +416,7 @@ int MidiSynth::Reset() {
 	}
 	SetEvent(sysexEvent);
 
-	wResult = waveOutWin32.Resume();
+	wResult = waveOut.Resume();
 	if (wResult) return wResult;
 
 	return wResult;
@@ -436,10 +435,10 @@ int MidiSynth::Close() {
 	}
 #endif
 
-	wResult = midiInWin32.Close();
+	wResult = midiIn.Close();
 	if (wResult) return wResult;
 
-	wResult = waveOutWin32.Close();
+	wResult = waveOut.Close();
 	if (wResult) return wResult;
 
 	synth->close();
