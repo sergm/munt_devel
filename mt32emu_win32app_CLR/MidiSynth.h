@@ -16,10 +16,12 @@ public:
 	int masterVolume;
 
 	Bit8u sysexbuf[4096];
+	char *pathToROMfiles;
 
 	Bit16s *stream1;
 	Bit16s *stream2;
 
+	bool pendingClose;
 	DWORD bufferStartTS, bufferStartS;
 	DWORD playCursor;
 
@@ -29,9 +31,6 @@ public:
 	MT32Emu::ExternalInterface *mt32emuExtInt;
 #endif
 
-	bool pendingClose;
-	HANDLE sysexEvent;
-
 	MidiSynth();
 	int Init();
 	int Close();
@@ -40,8 +39,6 @@ public:
 	void SetParameters(UINT pSampleRate, UINT pmidiDevID, UINT platency);
 	void Render(Bit16s *bufpos);
 };
-
-MidiSynth* GetMidiSynth();
 
 }
 #endif

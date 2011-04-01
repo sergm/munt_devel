@@ -18,13 +18,12 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 	Application::EnableVisualStyles();
 	Application::SetCompatibleTextRenderingDefault(false); 
 
-	midiSynth = MT32Emu::GetMidiSynth();
-	midiSynth->Init();
+	midiSynth.Init();
 
 	// Create the main window and run it
 	Application::Run(gcnew Form1());
 
-	midiSynth->Close();
+	midiSynth.Close();
 
 	return 0;
 }
