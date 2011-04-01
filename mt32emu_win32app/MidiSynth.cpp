@@ -158,25 +158,8 @@ static void CALLBACK waveOutProc(HWAVEOUT hWaveOut, UINT uMsg, DWORD_PTR dwInsta
 	if (midiSynth.pendingClose)
 		return;
 
-	// Set timestamp of buffer start
-	midiSynth.bufferStartS = midiSynth.playCursor + midiSynth.len;
-	midiSynth.bufferStartTS = clock();
-
 	LPWAVEHDR pWaveHdr = LPWAVEHDR(dwParam1);
 	midiSynth.Render((Bit16s*)pWaveHdr->lpData);
-
-	// Apply master volume
-	for (Bit16s *p = (Bit16s*)pWaveHdr->lpData; p < (Bit16s*)pWaveHdr->lpData + 2 * midiSynth.len; p++) {
-		int newSample = (*p * midiSynth.masterVolume) >> 8;
-
-		if (newSample > 32767)
-			newSample = 32767;
-
-		if (newSample < -32768)
-			newSample = -32768;
-
-		*p = newSample;
-	}
 
 	if (waveOutWrite(hWaveOut, pWaveHdr, sizeof(WAVEHDR)) != MMSYSERR_NOERROR) {
 		MessageBox(NULL, L"Failed to write block to device", NULL, MB_OK | MB_ICONEXCLAMATION);
@@ -283,10 +266,15 @@ int MT32_Report(void *userData, MT32Emu::ReportType type, const void *reportData
 	return 0;
 }
 
-void MidiSynth::Render(Bit16s *bufpos) {
+void MidiSynth::Render(Bit16s *startpos) {
 	DWORD msg, timeStamp;
 	int buflen = len;
 	int playlen;
+	Bit16s *bufpos = startpos;
+
+	// Set timestamp of buffer start
+	bufferStartS = playCursor + len;
+	bufferStartTS = clock();
 
 	for(;;) {
 		timeStamp = midiStream.PeekMessageTime();
@@ -325,6 +313,19 @@ void MidiSynth::Render(Bit16s *bufpos) {
 		mt32emuExtInt->doControlPanelComm(synth, 4 * len);
 	}
 #endif
+	
+	// Apply master volume
+	for (Bit16s *p = startpos; p < startpos + 2 * len; p++) {
+		int newSample = (*p * masterVolume) >> 8;
+
+		if (newSample > 32767)
+			newSample = 32767;
+
+		if (newSample < -32768)
+			newSample = -32768;
+
+		*p = newSample;
+	}
 }
 
 MidiSynth::MidiSynth() {
