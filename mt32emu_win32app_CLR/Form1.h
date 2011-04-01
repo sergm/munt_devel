@@ -10,6 +10,8 @@ namespace mt32emu_win32app_CLR {
 	using namespace System::Data;
 	using namespace System::Drawing;
 
+	MT32Emu::MidiSynth *midiSynth;
+
 	/// <summary>
 	/// Summary for Form1
 	///
@@ -236,19 +238,19 @@ namespace mt32emu_win32app_CLR {
 #pragma endregion
 
 	private: System::Void button1_Click(System::Object^  sender, System::EventArgs^  e) {
-				 this->Close();
+				this->Close();
 			 }
 	private: System::Void button1_Click_1(System::Object^  sender, System::EventArgs^  e) {
-				ResetMT32emu();
+				midiSynth->Reset();
 			 }
 	private: System::Void button2_Click(System::Object^  sender, System::EventArgs^  e) {
-				CloseMT32emu();
-				SetMT32emu((UINT)nudSampleRate->Value, (UINT)nudMidiInPort->Value,
+				midiSynth->Close();
+				midiSynth->SetParameters((UINT)nudSampleRate->Value, (UINT)nudMidiInPort->Value,
 					 (UINT)nudBufferLatency->Value);
-				InitMT32emu();
+				midiSynth->Init();
 			 }
 private: System::Void nudVolume_ValueChanged(System::Object^  sender, System::EventArgs^  e) {
-			SetMT32emuMasterVolume((UINT)(nudVolume->Value / 100 * 256));
+			midiSynth->SetMasterVolume((UINT)(nudVolume->Value / 100 * 256));
 		 }
 };
 }

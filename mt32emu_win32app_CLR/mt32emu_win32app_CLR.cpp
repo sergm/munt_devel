@@ -10,19 +10,21 @@ using namespace mt32emu_win32app_CLR;
 #if MT32EMU_USE_EXTINT == 1
 int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd)
 #else
-int main(array<System::String ^> ^args)
+int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd)
+//int main(array<System::String ^> ^args)
 #endif
 {
 	// Enabling Windows XP visual effects before any controls are created
 	Application::EnableVisualStyles();
 	Application::SetCompatibleTextRenderingDefault(false); 
 
-	InitMT32emu();
+	midiSynth = MT32Emu::GetMidiSynth();
+	midiSynth->Init();
 
 	// Create the main window and run it
 	Application::Run(gcnew Form1());
 
-	CloseMT32emu();
+	midiSynth->Close();
 
 	return 0;
 }

@@ -13,6 +13,13 @@
 #include <tchar.h>
 #include <windows.h>
 #include <iostream>
-#include "..\mt32emu\src\mt32emu.h"
 
 // TODO: reference additional headers your program requires here
+
+#include "..\mt32emu\src\mt32emu.h"
+
+#if MT32EMU_USE_EXTINT == 1
+#include "..\mt32emu\src\ExternalInterface.h"
+#endif
+
+#include "MidiSynth.h"
