@@ -29,7 +29,7 @@ public:
 		if (startpos == newEndpos) // check for buffer full
 			return -1;
 		stream[endpos][0] = msg;	// ok to put data and update endpos
-		stream[endpos][1] = midiSynth.bufferStartS + DWORD(midiSynth.sampleRate / 1000.f * (GetTickCount() - midiSynth.bufferStartTS));
+		stream[endpos][1] = timestamp;
 		endpos = newEndpos;
 		return 0;
 	}
@@ -79,7 +79,7 @@ void CALLBACK MidiInProc(HMIDIIN hMidiIn, UINT wMsg, DWORD_PTR dwInstance, DWORD
 	}
 	if (wMsg != MIM_DATA)
 		return;
-	midiStream.PutMessage(dwParam1, dwParam2);
+	midiStream.PutMessage(dwParam1, midiSynth.bufferStartS + DWORD(midiSynth.sampleRate / 1000.f * (GetTickCount() - midiSynth.bufferStartTS)));
 }
 
 void CALLBACK waveOutProc(HWAVEOUT hWaveOut, UINT uMsg, DWORD_PTR dwInstance, DWORD_PTR dwParam1, DWORD_PTR dwParam2)
