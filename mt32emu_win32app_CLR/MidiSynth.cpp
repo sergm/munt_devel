@@ -291,7 +291,9 @@ int MT32_Report(void *userData, ReportType type, const void *reportData) {
 }
 
 void MidiSynth::handleReport(ReportType type, const void *reportData) {
+#if MT32EMU_USE_EXTINT == 1
 	mt32emuExtInt->handleReport(synth, type, reportData);
+#endif
 }
 
 void MidiSynth::Render(Bit16s *startpos) {
