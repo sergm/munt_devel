@@ -120,7 +120,7 @@
 				InlineFunctionExpansion="2"
 				EnableIntrinsicFunctions="true"
 				FavorSizeOrSpeed="1"
-				AdditionalIncludeDirectories="..\mt32emu\src"
+				AdditionalIncludeDirectories="..\mt32emu\src;..\mt32emu_win32app_CLR"
 				PreprocessorDefinitions="WIN32;NDEBUG;_CONSOLE"
 				RuntimeLibrary="2"
 				BufferSecurityCheck="false"
