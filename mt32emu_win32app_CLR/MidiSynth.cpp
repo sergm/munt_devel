@@ -399,7 +399,7 @@ int MidiSynth::Init() {
 
 	playCursor = 0;
 	bufferStartS = len;
-	bufferStartTS = GetTickCount();
+	bufferStartTS = clock();
 
 	wResult = midiIn.Start();
 	if (wResult) return wResult;
