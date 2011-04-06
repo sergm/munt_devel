@@ -341,19 +341,6 @@ void MidiSynth::Render(Bit16s *startpos) {
 		mt32emuExtInt->doControlPanelComm(synth, 4 * len);
 	}
 #endif
-	
-	// Apply master volume
-	for (Bit16s *p = startpos; p < startpos + 2 * len; p++) {
-		int newSample = (*p * masterVolume) >> 8;
-
-		if (newSample > 32767)
-			newSample = 32767;
-
-		if (newSample < -32768)
-			newSample = -32768;
-
-		*p = newSample;
-	}
 }
 
 MidiSynth::MidiSynth() {
@@ -362,7 +349,6 @@ MidiSynth::MidiSynth() {
 	latency = 150;
 	len = UINT(sampleRate * latency / 2000.f);
 	midiDevID = 0;
-	masterVolume = 256;
 	pathToROMfiles = "C:/WINDOWS/SYSTEM32/";
 }
 
@@ -419,8 +405,11 @@ int MidiSynth::Init() {
 	return 0;
 }
 
-void MidiSynth::SetMasterVolume(UINT pMasterVolume) {
-	masterVolume = pMasterVolume;
+void MidiSynth::SetMasterVolume(UINT masterVolume) {
+	Bit8u sysex[] = {0x10, 0x00, 0x16, 0x01};
+
+	sysex[3] = (Bit8u)masterVolume;
+	synth->writeSysex(16, sysex, 4);
 }
 
 void MidiSynth::SetParameters(UINT pSampleRate, UINT pMidiDevID, UINT platency) {

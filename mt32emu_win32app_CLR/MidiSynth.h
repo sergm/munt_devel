@@ -11,7 +11,6 @@ private:
 	unsigned int len;
 	unsigned int midiDevID;
 	unsigned int latency;
-	int masterVolume;
 
 	Bit16s *stream1;
 	Bit16s *stream2;
