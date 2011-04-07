@@ -411,7 +411,9 @@ void MidiSynth::SetMasterVolume(UINT masterVolume) {
 	Bit8u sysex[] = {0x10, 0x00, 0x16, 0x01};
 
 	sysex[3] = (Bit8u)masterVolume;
+	synthEvent.Wait();
 	synth->writeSysex(16, sysex, 4);
+	synthEvent.Release();
 }
 
 void MidiSynth::SetParameters(UINT pSampleRate, UINT pMidiDevID, UINT platency) {
