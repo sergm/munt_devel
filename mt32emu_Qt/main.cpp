@@ -9,7 +9,7 @@ int main(int argv, char **args)
 	MidiSynth *midiSynth;
 
     QApplication app(argv, args);
-    app.setApplicationName("Audio Output Test");
+    app.setApplicationName("Roland MT-32 Emulator");
 
 	midiSynth = new MidiSynth;
 	midiSynth->Init();

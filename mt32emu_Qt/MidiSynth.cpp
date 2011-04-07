@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#include <QMessageBox>
 
 namespace MT32Emu {
 
@@ -180,6 +181,7 @@ public:
 };
 
 class WaveOutQt {
+private:
 public:
 	int Init(Bit16s *stream1, Bit16s *stream2, unsigned int len, unsigned int sampleRate) {
 		int wResult;
@@ -397,6 +399,7 @@ MidiSynth::MidiSynth() {
 }
 
 int MidiSynth::Init() {
+	QMessageBox msgBox;
 	UINT wResult;
 
 	synthEvent = new SynthEventWin32;
@@ -415,7 +418,8 @@ int MidiSynth::Init() {
 	SynthProperties synthProp = {sampleRate, true, true, 0, 0, 0, pathToROMfiles,
 		NULL, MT32_Report, NULL, NULL, NULL};
 	if (!synth->open(synthProp)) {
-		MessageBox(NULL, L"Can't open Synth", NULL, MB_OK | MB_ICONEXCLAMATION);
+		msgBox.setText("Can't open Synth");
+		msgBox.exec();
 		return 1;
 	}
 
@@ -471,6 +475,7 @@ void MidiSynth::SetParameters(UINT pSampleRate, UINT pMidiDevID, UINT platency) 
 }
 
 int MidiSynth::Reset() {
+	QMessageBox msgBox;
 	UINT wResult;
 
 	wResult = waveOut->Pause();
@@ -484,7 +489,8 @@ int MidiSynth::Reset() {
 	SynthProperties synthProp = {sampleRate, true, true, 0, 0, 0, pathToROMfiles,
 		NULL, MT32_Report, NULL, NULL, NULL};
 	if (!synth->open(synthProp)) {
-		MessageBox(NULL, L"Can't open Synth", NULL, MB_OK | MB_ICONEXCLAMATION);
+		msgBox.setText("Can't open Synth");
+		msgBox.exec();
 		return 1;
 	}
 	synthEvent->Release();
