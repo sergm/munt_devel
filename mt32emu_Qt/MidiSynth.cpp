@@ -2,8 +2,6 @@
 
 namespace MT32Emu {
 
-MidiSynth *midiSynth;
-
 class MidiStream {
 private:
 	static const unsigned int maxPos = 1024;
@@ -52,7 +50,7 @@ public:
 		unsigned int peekPos = (startpos + pos) % maxPos;
 		return stream[peekPos][1];
 	}
-} midiStream;
+};
 
 class SynthEventWin32 {
 private:
@@ -79,23 +77,31 @@ public:
 	void Release() {
 		SetEvent(hEvent);
 	}
-} synthEvent;
+};
 
 class MidiInWin32 {
 private:
+	MidiSynth *midiSynth;
+	MidiStream *midiStream;
+	SynthEventWin32 *synthEvent;
+
 	HMIDIIN hMidiIn;
 	MIDIHDR MidiInHdr;
 	Bit8u sysexbuf[4096];
 
 static void CALLBACK MidiInProc(HMIDIIN hMidiIn, UINT wMsg, DWORD_PTR dwInstance, DWORD_PTR dwParam1, DWORD_PTR dwParam2) {
-	if (midiSynth->IsPendingClose())
+	MidiInWin32 *inst;
+
+	inst = (MidiInWin32*)dwInstance;
+
+	if (inst->midiSynth->IsPendingClose())
 		return;
 
 	LPMIDIHDR pMIDIhdr = (LPMIDIHDR)dwParam1;
 	if (wMsg == MIM_LONGDATA) {
-		synthEvent.Wait();
-		midiSynth->PlaySysex((Bit8u*)pMIDIhdr->lpData, pMIDIhdr->dwBytesRecorded);
-		synthEvent.Release();
+		inst->synthEvent->Wait();
+		inst->midiSynth->PlaySysex((Bit8u*)pMIDIhdr->lpData, pMIDIhdr->dwBytesRecorded);
+		inst->synthEvent->Release();
 		std::cout << "Play SysEx message " << pMIDIhdr->dwBytesRecorded << " bytes\n";
 
 		//	Add SysEx Buffer for reuse
@@ -107,15 +113,19 @@ static void CALLBACK MidiInProc(HMIDIIN hMidiIn, UINT wMsg, DWORD_PTR dwInstance
 	}
 	if (wMsg != MIM_DATA)
 		return;
-	midiStream.PutMessage(dwParam1, midiSynth->GetTimeStamp());
+	inst->midiStream->PutMessage(dwParam1, inst->midiSynth->GetTimeStamp());
 }
 
 public:
-	int Init(unsigned int midiDevID) {
+	int Init(MidiSynth *pMidiSynth, MidiStream *pMidiStream, SynthEventWin32 *pSynthEvent, unsigned int midiDevID) {
 		int wResult;
 
+		midiSynth = pMidiSynth;
+		midiStream = pMidiStream;
+		synthEvent = pSynthEvent;
+
 		//	Init midiIn port
-		wResult = midiInOpen(&hMidiIn, midiDevID, (DWORD_PTR)MidiInProc, (DWORD_PTR)&midiSynth, CALLBACK_FUNCTION);
+		wResult = midiInOpen(&hMidiIn, midiDevID, (DWORD_PTR)MidiInProc, (DWORD_PTR)this, CALLBACK_FUNCTION);
 		if (wResult != MMSYSERR_NOERROR) {
 			MessageBox(NULL, L"Failed to open midi input device", NULL, MB_OK | MB_ICONEXCLAMATION);
 			return 5;
@@ -167,23 +177,54 @@ public:
 	int Start() {
 		return midiInStart(hMidiIn);
 	}
-} midiIn;
+};
+
+class WaveOutQt {
+public:
+	int Init(Bit16s *stream1, Bit16s *stream2, unsigned int len, unsigned int sampleRate) {
+		int wResult;
+		return 0;
+	}
+
+	int Close() {
+		int wResult;
+		return 0;
+	}
+
+	int Start() {
+		return 0;
+	}
+
+	int Pause() {
+		return 0;
+	}
+
+	int Resume() {
+		return 0;
+	}
+};
 
 class WaveOutWin32 {
 private:
+	MidiSynth *midiSynth;
+
 	HWAVEOUT	hWaveOut;
 	WAVEHDR		WaveHdr1;
 	WAVEHDR		WaveHdr2;
 
 static void CALLBACK waveOutProc(HWAVEOUT hWaveOut, UINT uMsg, DWORD_PTR dwInstance, DWORD_PTR dwParam1, DWORD_PTR dwParam2) {
+	WaveOutWin32 *inst;
+
+	inst = (WaveOutWin32*)dwInstance;
+
 	if (uMsg != WOM_DONE)
 		return;
 
-	if (midiSynth->IsPendingClose())
+	if (inst->midiSynth->IsPendingClose())
 		return;
 
 	LPWAVEHDR pWaveHdr = LPWAVEHDR(dwParam1);
-	midiSynth->Render((Bit16s*)pWaveHdr->lpData);
+	inst->midiSynth->Render((Bit16s*)pWaveHdr->lpData);
 
 	if (waveOutWrite(hWaveOut, pWaveHdr, sizeof(WAVEHDR)) != MMSYSERR_NOERROR) {
 		MessageBox(NULL, L"Failed to write block to device", NULL, MB_OK | MB_ICONEXCLAMATION);
@@ -191,12 +232,14 @@ static void CALLBACK waveOutProc(HWAVEOUT hWaveOut, UINT uMsg, DWORD_PTR dwInsta
 }
 
 public:
-	int Init(Bit16s *stream1, Bit16s *stream2, unsigned int len, unsigned int sampleRate) {
+	int Init(MidiSynth *pMidiSynth, Bit16s *stream1, Bit16s *stream2, unsigned int len, unsigned int sampleRate) {
 		int wResult;
 		PCMWAVEFORMAT wFormat = {WAVE_FORMAT_PCM, 2, sampleRate, sampleRate * 4, 4, 16};
 
+		midiSynth = pMidiSynth;
+
 		//	Open waveout device
-		wResult = waveOutOpen(&hWaveOut, WAVE_MAPPER, (LPWAVEFORMATEX)&wFormat, (DWORD_PTR)waveOutProc, (DWORD_PTR)&midiSynth, CALLBACK_FUNCTION);
+		wResult = waveOutOpen(&hWaveOut, WAVE_MAPPER, (LPWAVEFORMATEX)&wFormat, (DWORD_PTR)waveOutProc, (DWORD_PTR)this, CALLBACK_FUNCTION);
 		if (wResult != MMSYSERR_NOERROR) {
 			MessageBox(NULL, L"Failed to open waveform output device.", NULL, MB_OK | MB_ICONEXCLAMATION);
 			return 2;
@@ -281,7 +324,7 @@ public:
 		}
 		return 0;
 	}
-} waveOut;
+};
 
 int MT32_Report(void *userData, ReportType type, const void *reportData) {
 #if MT32EMU_USE_EXTINT == 1
@@ -307,7 +350,7 @@ void MidiSynth::Render(Bit16s *startpos) {
 	bufferStartTS = clock();
 
 	for(;;) {
-		timeStamp = midiStream.PeekMessageTime();
+		timeStamp = midiStream->PeekMessageTime();
 		if (timeStamp == -1)	// if midiStream is empty - exit
 			break;
 
@@ -317,26 +360,26 @@ void MidiSynth::Render(Bit16s *startpos) {
 			break;
 //		if (playlen < 0) std::cout << "Play MIDI message at neg timeStamp " << timeStamp << ", playCursor " << playCursor << " samples\n";
 		if (playlen > 0) {		// if midiMessage with same timeStamp - skip rendering
-			synthEvent.Wait();
+			synthEvent->Wait();
 			synth->render(bufpos, playlen);
-			synthEvent.Release();
+			synthEvent->Release();
 			playCursor += playlen;
 			bufpos += 2 * playlen;
 			buflen -= playlen;
 		}
 
 		// play midiMessage
-		msg = midiStream.GetMessage();
-		synthEvent.Wait();
+		msg = midiStream->GetMessage();
+		synthEvent->Wait();
 		synth->playMsg(msg);
-		synthEvent.Release();
+		synthEvent->Release();
 //		std::cout << "Play MIDI message " << msg << " at " << timeStamp / 1000.f << " ms\n";
 	}
 
 	//	render rest of samples
-	synthEvent.Wait();
+	synthEvent->Wait();
 	synth->render(bufpos, buflen);
-	synthEvent.Release();
+	synthEvent->Release();
 	playCursor += buflen;
 #if MT32EMU_USE_EXTINT == 1
 	if (mt32emuExtInt != NULL) {
@@ -346,7 +389,6 @@ void MidiSynth::Render(Bit16s *startpos) {
 }
 
 MidiSynth::MidiSynth() {
-	midiSynth = this;
 	sampleRate = 32000;
 	latency = 150;
 	len = UINT(sampleRate * latency / 2000.f);
@@ -357,11 +399,16 @@ MidiSynth::MidiSynth() {
 int MidiSynth::Init() {
 	UINT wResult;
 
+	synthEvent = new SynthEventWin32;
+	waveOut = new WaveOutWin32;
+//	waveOut = new WaveOutQt;
+	midiStream = new MidiStream;
+	midiIn = new MidiInWin32;
 	stream1 = new Bit16s[2 * len];
 	stream2 = new Bit16s[2 * len];
 
 	//	Init synth
-	if (synthEvent.Init()) {
+	if (synthEvent->Init()) {
 		return 1;
 	}
 	synth = new Synth();
@@ -382,10 +429,10 @@ int MidiSynth::Init() {
 	}
 #endif
 
-	wResult = waveOut.Init(stream1, stream2, len, sampleRate);
+	wResult = waveOut->Init(this, stream1, stream2, len, sampleRate);
 	if (wResult) return wResult;
 
-	wResult = midiIn.Init(midiDevID);
+	wResult = midiIn->Init(this, midiStream, synthEvent, midiDevID);
 	if (wResult) return wResult;
 
 	//	Start playing 2 streams
@@ -394,14 +441,14 @@ int MidiSynth::Init() {
 
 	pendingClose = false;
 
-	wResult = waveOut.Start();
+	wResult = waveOut->Start();
 	if (wResult) return wResult;
 
 	playCursor = 0;
 	bufferStartS = len;
 	bufferStartTS = clock();
 
-	wResult = midiIn.Start();
+	wResult = midiIn->Start();
 	if (wResult) return wResult;
 	
 	return 0;
@@ -411,9 +458,9 @@ void MidiSynth::SetMasterVolume(UINT masterVolume) {
 	Bit8u sysex[] = {0x10, 0x00, 0x16, 0x01};
 
 	sysex[3] = (Bit8u)masterVolume;
-	synthEvent.Wait();
+	synthEvent->Wait();
 	synth->writeSysex(16, sysex, 4);
-	synthEvent.Release();
+	synthEvent->Release();
 }
 
 void MidiSynth::SetParameters(UINT pSampleRate, UINT pMidiDevID, UINT platency) {
@@ -426,10 +473,10 @@ void MidiSynth::SetParameters(UINT pSampleRate, UINT pMidiDevID, UINT platency) 
 int MidiSynth::Reset() {
 	UINT wResult;
 
-	wResult = waveOut.Pause();
+	wResult = waveOut->Pause();
 	if (wResult) return wResult;
 
-	synthEvent.Wait();
+	synthEvent->Wait();
 	synth->close();
 	delete synth;
 
@@ -440,9 +487,9 @@ int MidiSynth::Reset() {
 		MessageBox(NULL, L"Can't open Synth", NULL, MB_OK | MB_ICONEXCLAMATION);
 		return 1;
 	}
-	synthEvent.Release();
+	synthEvent->Release();
 
-	wResult = waveOut.Resume();
+	wResult = waveOut->Resume();
 	if (wResult) return wResult;
 
 	return wResult;
@@ -473,20 +520,25 @@ int MidiSynth::Close() {
 	}
 #endif
 
-	wResult = midiIn.Close();
+	wResult = midiIn->Close();
 	if (wResult) return wResult;
 
-	wResult = waveOut.Close();
+	wResult = waveOut->Close();
 	if (wResult) return wResult;
 
 	synth->close();
+
+	synthEvent->Close();
 
 	// Cleanup memory
 	delete synth;
 	delete stream1;
 	delete stream2;
+	delete midiIn;
+	delete midiStream;
+	delete waveOut;
+	delete synthEvent;
 
-	synthEvent.Close();
 	return 0;
 }
 

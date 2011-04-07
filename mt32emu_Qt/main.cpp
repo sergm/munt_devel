@@ -6,12 +6,13 @@ using namespace MT32Emu;
 
 int main(int argv, char **args)
 {
-	static MidiSynth midiSynth;
+	MidiSynth *midiSynth;
 
     QApplication app(argv, args);
     app.setApplicationName("Audio Output Test");
 
-	midiSynth.Init();
+	midiSynth = new MidiSynth;
+	midiSynth->Init();
 
 	QDialog mainWindow;
 	Ui::MainWindow ui_MainWindow;
@@ -19,7 +20,8 @@ int main(int argv, char **args)
 
 	mainWindow.exec();
 
-	midiSynth.Close();
+	midiSynth->Close();
+	delete midiSynth;
 
     return 0;
 }
