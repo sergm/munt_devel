@@ -16,13 +16,14 @@ private:
 	unsigned int len;
 	unsigned int midiDevID;
 	unsigned int latency;
+	bool reverbEnabled;
+	DACInputMode emuDACInputMode;
 
-//	midiSynth = this;
 	MidiStream *midiStream;
 	SynthEventWin32 *synthEvent;
 	MidiInWin32 *midiIn;
 	WaveOutWin32 *waveOut;
-	//	WaveOutQt *waveOut;
+//	WaveOutQt *waveOut;
 
 	Bit16s *stream1;
 	Bit16s *stream2;
@@ -47,6 +48,8 @@ public:
 	void Render(Bit16s *bufpos);
 	void PlaySysex(Bit8u *bufpos, DWORD len);
 	void SetMasterVolume(UINT pMasterVolume);
+	void SetReverbEnabled(bool pReverbEnabled);
+	void SetDACInputMode(DACInputMode pEmuDACInputMode);
 	void SetParameters(UINT pSampleRate, UINT pmidiDevID, UINT platency);
 	bool IsPendingClose();
 	DWORD GetTimeStamp();
