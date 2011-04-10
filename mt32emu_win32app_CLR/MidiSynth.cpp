@@ -351,6 +351,8 @@ MidiSynth::MidiSynth() {
 	latency = 150;
 	len = UINT(sampleRate * latency / 2000.f);
 	midiDevID = 0;
+	reverbEnabled = true;
+	emuDACInputMode = DACInputMode_GENERATION2;
 	pathToROMfiles = "C:/WINDOWS/SYSTEM32/";
 }
 
@@ -371,6 +373,8 @@ int MidiSynth::Init() {
 		MessageBox(NULL, L"Can't open Synth", NULL, MB_OK | MB_ICONEXCLAMATION);
 		return 1;
 	}
+	synth->setReverbEnabled(reverbEnabled);
+	synth->setDACInputMode(emuDACInputMode);
 
 	//	Init External Interface
 #if MT32EMU_USE_EXTINT == 1
@@ -416,6 +420,16 @@ void MidiSynth::SetMasterVolume(UINT masterVolume) {
 	synthEvent.Release();
 }
 
+void MidiSynth::SetReverbEnabled(bool pReverbEnabled) {
+	reverbEnabled = pReverbEnabled;
+	synth->setReverbEnabled(reverbEnabled);
+}
+
+void MidiSynth::SetDACInputMode(DACInputMode pEmuDACInputMode) {
+	emuDACInputMode = pEmuDACInputMode;
+	synth->setDACInputMode(emuDACInputMode);
+}
+
 void MidiSynth::SetParameters(UINT pSampleRate, UINT pMidiDevID, UINT platency) {
 	sampleRate = pSampleRate;
 	latency = platency;
@@ -440,6 +454,8 @@ int MidiSynth::Reset() {
 		MessageBox(NULL, L"Can't open Synth", NULL, MB_OK | MB_ICONEXCLAMATION);
 		return 1;
 	}
+	synth->setReverbEnabled(reverbEnabled);
+	synth->setDACInputMode(emuDACInputMode);
 	synthEvent.Release();
 
 	wResult = waveOut.Resume();

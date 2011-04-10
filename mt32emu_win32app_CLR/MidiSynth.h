@@ -11,6 +11,8 @@ private:
 	unsigned int len;
 	unsigned int midiDevID;
 	unsigned int latency;
+	bool reverbEnabled;
+	DACInputMode emuDACInputMode;
 
 	Bit16s *stream1;
 	Bit16s *stream2;
@@ -35,6 +37,8 @@ public:
 	void Render(Bit16s *bufpos);
 	void PlaySysex(Bit8u *bufpos, DWORD len);
 	void SetMasterVolume(UINT pMasterVolume);
+	void SetReverbEnabled(bool pReverbEnabled);
+	void SetDACInputMode(DACInputMode pEmuDACInputMode);
 	void SetParameters(UINT pSampleRate, UINT pmidiDevID, UINT platency);
 	bool IsPendingClose();
 	DWORD GetTimeStamp();

@@ -30,6 +30,7 @@ namespace mt32emu_win32app_CLR {
 			//
 			//TODO: Add the constructor code here
 			//
+			cbDACInputMode->SelectedIndex = 0;
 		}
 
 	protected:
@@ -63,6 +64,12 @@ namespace mt32emu_win32app_CLR {
 	private: System::Windows::Forms::Label^  label2;
 	private: System::Windows::Forms::Label^  label3;
 	private: System::Windows::Forms::Label^  label4;
+
+	private: System::Windows::Forms::Label^  label5;
+	private: System::Windows::Forms::CheckBox^  chbReverbEnabled;
+
+	private: System::Windows::Forms::ComboBox^  cbDACInputMode;
+
 	protected: 
 
 	protected: 
@@ -93,6 +100,9 @@ namespace mt32emu_win32app_CLR {
 			this->label2 = (gcnew System::Windows::Forms::Label());
 			this->label3 = (gcnew System::Windows::Forms::Label());
 			this->label4 = (gcnew System::Windows::Forms::Label());
+			this->label5 = (gcnew System::Windows::Forms::Label());
+			this->chbReverbEnabled = (gcnew System::Windows::Forms::CheckBox());
+			this->cbDACInputMode = (gcnew System::Windows::Forms::ComboBox());
 			(cli::safe_cast<System::ComponentModel::ISupportInitialize^  >(this->nudSampleRate))->BeginInit();
 			(cli::safe_cast<System::ComponentModel::ISupportInitialize^  >(this->nudMidiInPort))->BeginInit();
 			(cli::safe_cast<System::ComponentModel::ISupportInitialize^  >(this->nudVolume))->BeginInit();
@@ -102,10 +112,10 @@ namespace mt32emu_win32app_CLR {
 			// bClose
 			// 
 			this->bClose->DialogResult = System::Windows::Forms::DialogResult::Cancel;
-			this->bClose->Location = System::Drawing::Point(205, 147);
+			this->bClose->Location = System::Drawing::Point(205, 185);
 			this->bClose->Name = L"bClose";
 			this->bClose->Size = System::Drawing::Size(75, 23);
-			this->bClose->TabIndex = 6;
+			this->bClose->TabIndex = 8;
 			this->bClose->Text = L"Close";
 			this->bClose->UseVisualStyleBackColor = true;
 			this->bClose->Click += gcnew System::EventHandler(this, &Form1::button1_Click);
@@ -113,20 +123,20 @@ namespace mt32emu_win32app_CLR {
 			// bReset
 			// 
 			this->bReset->DialogResult = System::Windows::Forms::DialogResult::OK;
-			this->bReset->Location = System::Drawing::Point(108, 147);
+			this->bReset->Location = System::Drawing::Point(108, 185);
 			this->bReset->Name = L"bReset";
 			this->bReset->Size = System::Drawing::Size(75, 23);
-			this->bReset->TabIndex = 5;
+			this->bReset->TabIndex = 7;
 			this->bReset->Text = L"Reset Synth";
 			this->bReset->UseVisualStyleBackColor = true;
 			this->bReset->Click += gcnew System::EventHandler(this, &Form1::button1_Click_1);
 			// 
 			// bApply
 			// 
-			this->bApply->Location = System::Drawing::Point(12, 147);
+			this->bApply->Location = System::Drawing::Point(12, 185);
 			this->bApply->Name = L"bApply";
 			this->bApply->Size = System::Drawing::Size(75, 23);
-			this->bApply->TabIndex = 4;
+			this->bApply->TabIndex = 6;
 			this->bApply->Text = L"Apply";
 			this->bApply->UseVisualStyleBackColor = true;
 			this->bApply->Click += gcnew System::EventHandler(this, &Form1::button2_Click);
@@ -205,13 +215,50 @@ namespace mt32emu_win32app_CLR {
 			this->label4->TabIndex = 10;
 			this->label4->Text = L"Buffer Latency, ms";
 			// 
+			// label5
+			// 
+			this->label5->AutoSize = true;
+			this->label5->Location = System::Drawing::Point(44, 132);
+			this->label5->Name = L"label5";
+			this->label5->Size = System::Drawing::Size(86, 13);
+			this->label5->TabIndex = 12;
+			this->label5->Text = L"DAC Input Mode";
+			// 
+			// chbReverbEnabled
+			// 
+			this->chbReverbEnabled->AutoSize = true;
+			this->chbReverbEnabled->Checked = true;
+			this->chbReverbEnabled->CheckState = System::Windows::Forms::CheckState::Checked;
+			this->chbReverbEnabled->Location = System::Drawing::Point(160, 153);
+			this->chbReverbEnabled->Name = L"chbReverbEnabled";
+			this->chbReverbEnabled->Size = System::Drawing::Size(95, 17);
+			this->chbReverbEnabled->TabIndex = 5;
+			this->chbReverbEnabled->Text = L"reverbEnabled";
+			this->chbReverbEnabled->UseVisualStyleBackColor = true;
+			this->chbReverbEnabled->CheckedChanged += gcnew System::EventHandler(this, &Form1::chbReverbEnabled_CheckedChanged);
+			// 
+			// cbDACInputMode
+			// 
+			this->cbDACInputMode->DropDownStyle = System::Windows::Forms::ComboBoxStyle::DropDownList;
+			this->cbDACInputMode->FormattingEnabled = true;
+			this->cbDACInputMode->Items->AddRange(gcnew cli::array< System::Object^  >(4) {L"DACInputMode_NICE", L"DACInputMode_PURE", 
+				L"DACInputMode_GENERATION1", L"DACInputMode_GENERATION2"});
+			this->cbDACInputMode->Location = System::Drawing::Point(159, 124);
+			this->cbDACInputMode->Name = L"cbDACInputMode";
+			this->cbDACInputMode->Size = System::Drawing::Size(121, 21);
+			this->cbDACInputMode->TabIndex = 4;
+			this->cbDACInputMode->SelectedIndexChanged += gcnew System::EventHandler(this, &Form1::cbDACInputMode_SelectedIndexChanged);
+			// 
 			// Form1
 			// 
 			this->AcceptButton = this->bApply;
 			this->AutoScaleDimensions = System::Drawing::SizeF(6, 13);
 			this->AutoScaleMode = System::Windows::Forms::AutoScaleMode::Font;
 			this->CancelButton = this->bClose;
-			this->ClientSize = System::Drawing::Size(292, 192);
+			this->ClientSize = System::Drawing::Size(292, 227);
+			this->Controls->Add(this->cbDACInputMode);
+			this->Controls->Add(this->chbReverbEnabled);
+			this->Controls->Add(this->label5);
 			this->Controls->Add(this->label4);
 			this->Controls->Add(this->label3);
 			this->Controls->Add(this->label2);
@@ -249,6 +296,12 @@ namespace mt32emu_win32app_CLR {
 			 }
 private: System::Void nudVolume_ValueChanged(System::Object^  sender, System::EventArgs^  e) {
 			midiSynth.SetMasterVolume((UINT)(nudVolume->Value));
+		 }
+private: System::Void chbReverbEnabled_CheckedChanged(System::Object^  sender, System::EventArgs^  e) {
+			midiSynth.SetReverbEnabled(chbReverbEnabled->Checked);
+		 }
+private: System::Void cbDACInputMode_SelectedIndexChanged(System::Object^  sender, System::EventArgs^  e) {
+			 midiSynth.SetDACInputMode((MT32Emu::DACInputMode)cbDACInputMode->SelectedIndex);
 		 }
 };
 }
