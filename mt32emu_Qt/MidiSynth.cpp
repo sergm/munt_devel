@@ -241,8 +241,8 @@ void MidiSynth::Render(Bit16s *startpos, qint64 len) {
 	Bit16s *bufpos = startpos;
 
 	// Set timestamp of buffer start
-	bufferStartS = playCursor + latency * sampleRate / 1000.f;
-	bufferStartTS = clock();
+	bufferStartS = playCursor;
+	bufferStartTS = clock() - latency;
 
 	for(;;) {
 		timeStamp = midiStream->PeekMessageTime();
@@ -334,8 +334,8 @@ int MidiSynth::Init() {
 	pendingClose = false;
 
 	playCursor = 0;
-	bufferStartS = latency * sampleRate / 1000.f;
-	bufferStartTS = clock();
+	bufferStartS = 0;
+	bufferStartTS = clock() - latency;
 
 	wResult = waveOut->Start();
 	if (wResult) return wResult;
