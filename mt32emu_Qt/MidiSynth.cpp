@@ -180,7 +180,7 @@ private:
 	WaveGenerator *waveGenerator;
 
 public:
-	int Init(MidiSynth *midiSynth, unsigned int sampleRate, unsigned int latency) {
+	int Init(MidiSynth *midiSynth, unsigned int sampleRate) {
 		QAudioFormat format;
 
 		format.setFrequency(sampleRate);
@@ -192,7 +192,6 @@ public:
 
 		waveGenerator = new WaveGenerator(midiSynth);
 		audioOutput = new QAudioOutput(format, waveGenerator);
-		audioOutput->setBufferSize(0.004f * latency * sampleRate);
 
 		return 0;
 	}
@@ -242,7 +241,7 @@ void MidiSynth::Render(Bit16s *startpos, qint64 len) {
 	Bit16s *bufpos = startpos;
 
 	// Set timestamp of buffer start
-	bufferStartS = playCursor + len;
+	bufferStartS = playCursor + latency * sampleRate / 1000.f;
 	bufferStartTS = clock();
 
 	for(;;) {
@@ -276,7 +275,9 @@ void MidiSynth::Render(Bit16s *startpos, qint64 len) {
 	mutex->lock();
 	synth->render(bufpos, buflen);
 	mutex->unlock();
+
 	playCursor += buflen;
+
 #if MT32EMU_USE_EXTINT == 1
 	if (mt32emuExtInt != NULL) {
 		mt32emuExtInt->doControlPanelComm(synth, 4 * len);
@@ -286,7 +287,7 @@ void MidiSynth::Render(Bit16s *startpos, qint64 len) {
 
 MidiSynth::MidiSynth() {
 	sampleRate = 32000;
-	latency = 150;
+	latency = 90;
 	midiDevID = 0;
 	reverbEnabled = true;
 	emuDACInputMode = DACInputMode_GENERATION2;
@@ -324,7 +325,7 @@ int MidiSynth::Init() {
 	}
 #endif
 
-	wResult = waveOut->Init(this, sampleRate, latency);
+	wResult = waveOut->Init(this, sampleRate);
 	if (wResult) return wResult;
 
 	wResult = midiIn->Init(this, midiStream, midiDevID);
@@ -333,6 +334,8 @@ int MidiSynth::Init() {
 	pendingClose = false;
 
 	playCursor = 0;
+	bufferStartS = latency * sampleRate / 1000.f;
+	bufferStartTS = clock();
 
 	wResult = waveOut->Start();
 	if (wResult) return wResult;
