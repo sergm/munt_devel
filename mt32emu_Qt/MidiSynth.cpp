@@ -180,7 +180,7 @@ private:
 	WaveGenerator *waveGenerator;
 
 public:
-	int Init(MidiSynth *midiSynth, unsigned int sampleRate) {
+	int Init(MidiSynth *midiSynth, unsigned int sampleRate, unsigned int latency) {
 		QAudioFormat format;
 
 		format.setFrequency(sampleRate);
@@ -192,6 +192,7 @@ public:
 
 		waveGenerator = new WaveGenerator(midiSynth);
 		audioOutput = new QAudioOutput(format, waveGenerator);
+		audioOutput->setBufferSize(0.004f * latency * sampleRate);
 
 		return 0;
 	}
@@ -292,7 +293,6 @@ MidiSynth::MidiSynth() {
 	pathToROMfiles = "C:/WINDOWS/SYSTEM32/";
 
 	mutex = new QMutex;
-//	waveOut = new WaveOutWin32;
 	waveOut = new WaveOutQt;
 	midiStream = new MidiStream;
 	midiIn = new MidiInWin32;
@@ -324,7 +324,7 @@ int MidiSynth::Init() {
 	}
 #endif
 
-	wResult = waveOut->Init(this, sampleRate);
+	wResult = waveOut->Init(this, sampleRate, latency);
 	if (wResult) return wResult;
 
 	wResult = midiIn->Init(this, midiStream, midiDevID);
