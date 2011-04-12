@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#include <QtMultimedia/QAudioOutput>
 #include <QMessageBox>
 
 namespace MT32Emu {
@@ -84,7 +85,6 @@ class MidiInWin32 {
 private:
 	MidiSynth *midiSynth;
 	MidiStream *midiStream;
-	SynthEventWin32 *synthEvent;
 
 	HMIDIIN hMidiIn;
 	MIDIHDR MidiInHdr;
@@ -100,9 +100,7 @@ static void CALLBACK MidiInProc(HMIDIIN hMidiIn, UINT wMsg, DWORD_PTR dwInstance
 
 	LPMIDIHDR pMIDIhdr = (LPMIDIHDR)dwParam1;
 	if (wMsg == MIM_LONGDATA) {
-		inst->synthEvent->Wait();
 		inst->midiSynth->PlaySysex((Bit8u*)pMIDIhdr->lpData, pMIDIhdr->dwBytesRecorded);
-		inst->synthEvent->Release();
 		std::cout << "Play SysEx message " << pMIDIhdr->dwBytesRecorded << " bytes\n";
 
 		//	Add SysEx Buffer for reuse
@@ -118,12 +116,11 @@ static void CALLBACK MidiInProc(HMIDIIN hMidiIn, UINT wMsg, DWORD_PTR dwInstance
 }
 
 public:
-	int Init(MidiSynth *pMidiSynth, MidiStream *pMidiStream, SynthEventWin32 *pSynthEvent, unsigned int midiDevID) {
+	int Init(MidiSynth *pMidiSynth, MidiStream *pMidiStream, unsigned int midiDevID) {
 		int wResult;
 
 		midiSynth = pMidiSynth;
 		midiStream = pMidiStream;
-		synthEvent = pSynthEvent;
 
 		//	Init midiIn port
 		wResult = midiInOpen(&hMidiIn, midiDevID, (DWORD_PTR)MidiInProc, (DWORD_PTR)this, CALLBACK_FUNCTION);
@@ -440,7 +437,7 @@ int MidiSynth::Init() {
 	wResult = waveOut->Init(this, stream1, stream2, len, sampleRate);
 	if (wResult) return wResult;
 
-	wResult = midiIn->Init(this, midiStream, synthEvent, midiDevID);
+	wResult = midiIn->Init(this, midiStream, midiDevID);
 	if (wResult) return wResult;
 
 	//	Start playing 2 streams
@@ -522,7 +519,9 @@ bool MidiSynth::IsPendingClose() {
 }
 
 void MidiSynth::PlaySysex(Bit8u *bufpos, DWORD len) {
+	synthEvent->Wait();
 	synth->playSysex(bufpos, len);
+	synthEvent->Release();
 }
 
 DWORD MidiSynth::GetTimeStamp() {
