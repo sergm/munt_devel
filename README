@@ -5,3 +5,5 @@ devel - test programs helping research of filtered square wave generation
 mt32emu_win32app - MT32Emu WinMM Application (Console)
 
 mt32emu_win32app_CLR - MT32Emu WinMM Application (CLR / .NET)
+
+mt32emu_Qt - MT32Emu Application, uses Qt and tageted to be cross-platform
