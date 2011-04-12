@@ -1,6 +1,4 @@
 #include "stdafx.h"
-#include <QtMultimedia/QAudioOutput>
-#include <QMessageBox>
 
 namespace MT32Emu {
 
@@ -51,33 +49,6 @@ public:
 			return -1;
 		unsigned int peekPos = (startpos + pos) % maxPos;
 		return stream[peekPos][1];
-	}
-};
-
-class SynthEventWin32 {
-private:
-	HANDLE hEvent;
-
-public:
-	int Init() {
-		hEvent = CreateEvent(NULL, false, true, NULL);
-		if (hEvent == NULL) {
-			MessageBox(NULL, L"Can't create sync object", NULL, MB_OK | MB_ICONEXCLAMATION);
-			return 1;
-		}
-		return 0;
-	}
-
-	void Close() {
-		CloseHandle(hEvent);
-	}
-
-	void Wait() {
-		WaitForSingleObject(hEvent, INFINITE);
-	}
-
-	void Release() {
-		SetEvent(hEvent);
 	}
 };
 
@@ -179,9 +150,25 @@ public:
 
 class WaveOutQt {
 private:
+		QAudioDeviceInfo	m_device;
+		QAudioFormat		m_format;
+		QAudioOutput		*m_audioOutput;
+
 public:
 	int Init(Bit16s *stream1, Bit16s *stream2, unsigned int len, unsigned int sampleRate) {
 		int wResult;
+
+		m_format.setFrequency(sampleRate);
+		m_format.setChannels(2);
+		m_format.setSampleSize(16);
+		m_format.setCodec("audio/pcm");
+		m_format.setByteOrder(QAudioFormat::LittleEndian);
+		m_format.setSampleType(QAudioFormat::SignedInt);
+//		m_audioOutput = new QAudioOutput(m_device, m_format, this);
+//		connect(m_audioOutput, SIGNAL(notify()), SLOT(notified()));
+//		connect(m_audioOutput, SIGNAL(stateChanged(QAudio::State)), SLOT(stateChanged(QAudio::State)));
+//		m_audioOutput->start(m_generator);
+
 		return 0;
 	}
 
@@ -359,9 +346,9 @@ void MidiSynth::Render(Bit16s *startpos) {
 			break;
 //		if (playlen < 0) std::cout << "Play MIDI message at neg timeStamp " << timeStamp << ", playCursor " << playCursor << " samples\n";
 		if (playlen > 0) {		// if midiMessage with same timeStamp - skip rendering
-			synthEvent->Wait();
+			mutex->lock();
 			synth->render(bufpos, playlen);
-			synthEvent->Release();
+			mutex->unlock();
 			playCursor += playlen;
 			bufpos += 2 * playlen;
 			buflen -= playlen;
@@ -369,16 +356,16 @@ void MidiSynth::Render(Bit16s *startpos) {
 
 		// play midiMessage
 		msg = midiStream->GetMessage();
-		synthEvent->Wait();
+		mutex->lock();
 		synth->playMsg(msg);
-		synthEvent->Release();
+		mutex->unlock();
 //		std::cout << "Play MIDI message " << msg << " at " << timeStamp / 1000.f << " ms\n";
 	}
 
 	//	render rest of samples
-	synthEvent->Wait();
+	mutex->lock();
 	synth->render(bufpos, buflen);
-	synthEvent->Release();
+	mutex->unlock();
 	playCursor += buflen;
 #if MT32EMU_USE_EXTINT == 1
 	if (mt32emuExtInt != NULL) {
@@ -401,7 +388,7 @@ int MidiSynth::Init() {
 	QMessageBox msgBox;
 	UINT wResult;
 
-	synthEvent = new SynthEventWin32;
+	mutex = new QMutex;
 	waveOut = new WaveOutWin32;
 //	waveOut = new WaveOutQt;
 	midiStream = new MidiStream;
@@ -410,9 +397,6 @@ int MidiSynth::Init() {
 	stream2 = new Bit16s[2 * len];
 
 	//	Init synth
-	if (synthEvent->Init()) {
-		return 1;
-	}
 	synth = new Synth();
 	SynthProperties synthProp = {sampleRate, true, true, 0, 0, 0, pathToROMfiles,
 		NULL, MT32_Report, NULL, NULL, NULL};
@@ -463,19 +447,23 @@ void MidiSynth::SetMasterVolume(UINT masterVolume) {
 	Bit8u sysex[] = {0x10, 0x00, 0x16, 0x01};
 
 	sysex[3] = (Bit8u)masterVolume;
-	synthEvent->Wait();
+	mutex->lock();
 	synth->writeSysex(16, sysex, 4);
-	synthEvent->Release();
+	mutex->unlock();
 }
 
 void MidiSynth::SetReverbEnabled(bool pReverbEnabled) {
 	reverbEnabled = pReverbEnabled;
+	mutex->lock();
 	synth->setReverbEnabled(reverbEnabled);
+	mutex->unlock();
 }
 
 void MidiSynth::SetDACInputMode(DACInputMode pEmuDACInputMode) {
 	emuDACInputMode = pEmuDACInputMode;
+	mutex->lock();
 	synth->setDACInputMode(emuDACInputMode);
+	mutex->unlock();
 }
 
 void MidiSynth::SetParameters(UINT pSampleRate, UINT pMidiDevID, UINT platency) {
@@ -492,7 +480,7 @@ int MidiSynth::Reset() {
 	wResult = waveOut->Pause();
 	if (wResult) return wResult;
 
-	synthEvent->Wait();
+	mutex->lock();
 	synth->close();
 	delete synth;
 
@@ -506,7 +494,7 @@ int MidiSynth::Reset() {
 	}
 	synth->setReverbEnabled(reverbEnabled);
 	synth->setDACInputMode(emuDACInputMode);
-	synthEvent->Release();
+	mutex->unlock();
 
 	wResult = waveOut->Resume();
 	if (wResult) return wResult;
@@ -519,9 +507,9 @@ bool MidiSynth::IsPendingClose() {
 }
 
 void MidiSynth::PlaySysex(Bit8u *bufpos, DWORD len) {
-	synthEvent->Wait();
+	mutex->lock();
 	synth->playSysex(bufpos, len);
-	synthEvent->Release();
+	mutex->unlock();
 }
 
 DWORD MidiSynth::GetTimeStamp() {
@@ -541,6 +529,8 @@ int MidiSynth::Close() {
 	}
 #endif
 
+	mutex->lock();
+
 	wResult = midiIn->Close();
 	if (wResult) return wResult;
 
@@ -549,8 +539,6 @@ int MidiSynth::Close() {
 
 	synth->close();
 
-	synthEvent->Close();
-
 	// Cleanup memory
 	delete synth;
 	delete stream1;
@@ -558,7 +546,7 @@ int MidiSynth::Close() {
 	delete midiIn;
 	delete midiStream;
 	delete waveOut;
-	delete synthEvent;
+	delete mutex;
 
 	return 0;
 }

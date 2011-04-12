@@ -19,8 +19,8 @@ private:
 	bool reverbEnabled;
 	DACInputMode emuDACInputMode;
 
+	QMutex *mutex;
 	MidiStream *midiStream;
-	SynthEventWin32 *synthEvent;
 	MidiInWin32 *midiIn;
 	WaveOutWin32 *waveOut;
 //	WaveOutQt *waveOut;
