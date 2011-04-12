@@ -148,166 +148,75 @@ public:
 	}
 };
 
-class WaveOutQt {
+class WaveGenerator : public QIODevice {
 private:
-		QAudioDeviceInfo	m_device;
-		QAudioFormat		m_format;
-		QAudioOutput		*m_audioOutput;
+	MidiSynth *midiSynth;
 
 public:
-	int Init(Bit16s *stream1, Bit16s *stream2, unsigned int len, unsigned int sampleRate) {
-		int wResult;
-
-		m_format.setFrequency(sampleRate);
-		m_format.setChannels(2);
-		m_format.setSampleSize(16);
-		m_format.setCodec("audio/pcm");
-		m_format.setByteOrder(QAudioFormat::LittleEndian);
-		m_format.setSampleType(QAudioFormat::SignedInt);
-//		m_audioOutput = new QAudioOutput(m_device, m_format, this);
-//		connect(m_audioOutput, SIGNAL(notify()), SLOT(notified()));
-//		connect(m_audioOutput, SIGNAL(stateChanged(QAudio::State)), SLOT(stateChanged(QAudio::State)));
-//		m_audioOutput->start(m_generator);
-
-		return 0;
+	WaveGenerator(MidiSynth *pMidiSynth) {
+		midiSynth = pMidiSynth;
+		open(QIODevice::ReadOnly);
 	}
 
-	int Close() {
-		int wResult;
-		return 0;
+	qint64 readData(char *data, qint64 len)
+	{
+		if (midiSynth->IsPendingClose()) {
+			return 0;
+		}
+		midiSynth->Render((Bit16s*)data, len >> 2);
+		return len;
 	}
 
-	int Start() {
-		return 0;
-	}
-
-	int Pause() {
-		return 0;
-	}
-
-	int Resume() {
+	qint64 writeData(const char *data, qint64 len) {
+	    Q_UNUSED(data);
+		Q_UNUSED(len);
 		return 0;
 	}
 };
 
-class WaveOutWin32 {
+class WaveOutQt {
 private:
-	MidiSynth *midiSynth;
-
-	HWAVEOUT	hWaveOut;
-	WAVEHDR		WaveHdr1;
-	WAVEHDR		WaveHdr2;
-
-static void CALLBACK waveOutProc(HWAVEOUT hWaveOut, UINT uMsg, DWORD_PTR dwInstance, DWORD_PTR dwParam1, DWORD_PTR dwParam2) {
-	WaveOutWin32 *inst;
-
-	inst = (WaveOutWin32*)dwInstance;
-
-	if (uMsg != WOM_DONE)
-		return;
-
-	if (inst->midiSynth->IsPendingClose())
-		return;
-
-	LPWAVEHDR pWaveHdr = LPWAVEHDR(dwParam1);
-	inst->midiSynth->Render((Bit16s*)pWaveHdr->lpData);
-
-	if (waveOutWrite(hWaveOut, pWaveHdr, sizeof(WAVEHDR)) != MMSYSERR_NOERROR) {
-		MessageBox(NULL, L"Failed to write block to device", NULL, MB_OK | MB_ICONEXCLAMATION);
-	}
-}
+	QAudioOutput *audioOutput;
+	WaveGenerator *waveGenerator;
 
 public:
-	int Init(MidiSynth *pMidiSynth, Bit16s *stream1, Bit16s *stream2, unsigned int len, unsigned int sampleRate) {
-		int wResult;
-		PCMWAVEFORMAT wFormat = {WAVE_FORMAT_PCM, 2, sampleRate, sampleRate * 4, 4, 16};
+	int Init(MidiSynth *midiSynth, unsigned int sampleRate) {
+		QAudioFormat format;
 
-		midiSynth = pMidiSynth;
+		format.setFrequency(sampleRate);
+		format.setChannels(2);
+		format.setSampleSize(16);
+		format.setCodec("audio/pcm");
+		format.setByteOrder(QAudioFormat::LittleEndian);
+		format.setSampleType(QAudioFormat::SignedInt);
 
-		//	Open waveout device
-		wResult = waveOutOpen(&hWaveOut, WAVE_MAPPER, (LPWAVEFORMATEX)&wFormat, (DWORD_PTR)waveOutProc, (DWORD_PTR)this, CALLBACK_FUNCTION);
-		if (wResult != MMSYSERR_NOERROR) {
-			MessageBox(NULL, L"Failed to open waveform output device.", NULL, MB_OK | MB_ICONEXCLAMATION);
-			return 2;
-		}
+		waveGenerator = new WaveGenerator(midiSynth);
+		audioOutput = new QAudioOutput(format, waveGenerator);
 
-		//	Prepare 2 Headers
-		WaveHdr1.lpData = (LPSTR)stream1;
-		WaveHdr1.dwBufferLength = 4 * len;
-		WaveHdr1.dwFlags = 0L;
-		WaveHdr1.dwLoops = 0L;
-		wResult = waveOutPrepareHeader(hWaveOut, &WaveHdr1, sizeof(WAVEHDR));
-		if (wResult != MMSYSERR_NOERROR) {
-			MessageBox(NULL, L"Failed to Prepare Header 1", NULL, MB_OK | MB_ICONEXCLAMATION);
-			return 3;
-		}
-
-		WaveHdr2.lpData = (LPSTR)stream2;
-		WaveHdr2.dwBufferLength = 4 * len;
-		WaveHdr2.dwFlags = 0L;
-		WaveHdr2.dwLoops = 0L;
-		wResult = waveOutPrepareHeader(hWaveOut, &WaveHdr2, sizeof(WAVEHDR));
-		if (wResult != MMSYSERR_NOERROR) {
-			MessageBox(NULL, L"Failed to Prepare Header 2", NULL, MB_OK | MB_ICONEXCLAMATION);
-			return 3;
-		}
 		return 0;
 	}
 
 	int Close() {
-		int wResult;
+		audioOutput->stop();
 
-		wResult = waveOutReset(hWaveOut);
-		if (wResult != MMSYSERR_NOERROR) {
-			MessageBox(NULL, L"Failed to Reset WaveOut", NULL, MB_OK | MB_ICONEXCLAMATION);
-			return 8;
-		}
+		delete audioOutput;
+		delete waveGenerator;
 
-		wResult = waveOutUnprepareHeader(hWaveOut, &WaveHdr1, sizeof(WAVEHDR));
-		if (wResult != MMSYSERR_NOERROR) {
-			MessageBox(NULL, L"Failed to Unprepare Wave Header", NULL, MB_OK | MB_ICONEXCLAMATION);
-			return 8;
-		}
-
-		wResult = waveOutUnprepareHeader(hWaveOut, &WaveHdr2, sizeof(WAVEHDR));
-		if (wResult != MMSYSERR_NOERROR) {
-			MessageBox(NULL, L"Failed to Unprepare Wave Header", NULL, MB_OK | MB_ICONEXCLAMATION);
-			return 8;
-		}
-
-		wResult = waveOutClose(hWaveOut);
-		if (wResult != MMSYSERR_NOERROR) {
-			MessageBox(NULL, L"Failed to Close WaveOut", NULL, MB_OK | MB_ICONEXCLAMATION);
-			return 8;
-		}
 		return 0;
 	}
 
 	int Start() {
-		if (waveOutWrite(hWaveOut, &WaveHdr1, sizeof(WAVEHDR)) != MMSYSERR_NOERROR) {
-			MessageBox(NULL, L"Failed to write block to device", NULL, MB_OK | MB_ICONEXCLAMATION);
-			return 4;
-		}
-		if (waveOutWrite(hWaveOut, &WaveHdr2, sizeof(WAVEHDR)) != MMSYSERR_NOERROR) {
-			MessageBox(NULL, L"Failed to write block to device", NULL, MB_OK | MB_ICONEXCLAMATION);
-			return 4;
-		}
+		audioOutput->start(waveGenerator);
 		return 0;
 	}
 
 	int Pause() {
-		if (waveOutPause(hWaveOut) != MMSYSERR_NOERROR) {
-			MessageBox(NULL, L"Failed to Pause wave playback", NULL, MB_OK | MB_ICONEXCLAMATION);
-			return 9;
-		}
+		audioOutput->suspend();
 		return 0;
 	}
 
 	int Resume() {
-		if (waveOutRestart(hWaveOut) != MMSYSERR_NOERROR) {
-			MessageBox(NULL, L"Failed to Pause wave playback", NULL, MB_OK | MB_ICONEXCLAMATION);
-			return 9;
-		}
+		audioOutput->resume();
 		return 0;
 	}
 };
@@ -325,7 +234,7 @@ void MidiSynth::handleReport(ReportType type, const void *reportData) {
 #endif
 }
 
-void MidiSynth::Render(Bit16s *startpos) {
+void MidiSynth::Render(Bit16s *startpos, qint64 len) {
 	DWORD msg, timeStamp;
 	int buflen = len;
 	int playlen;
@@ -377,27 +286,24 @@ void MidiSynth::Render(Bit16s *startpos) {
 MidiSynth::MidiSynth() {
 	sampleRate = 32000;
 	latency = 150;
-	len = UINT(sampleRate * latency / 2000.f);
 	midiDevID = 0;
 	reverbEnabled = true;
 	emuDACInputMode = DACInputMode_GENERATION2;
 	pathToROMfiles = "C:/WINDOWS/SYSTEM32/";
+
+	mutex = new QMutex;
+//	waveOut = new WaveOutWin32;
+	waveOut = new WaveOutQt;
+	midiStream = new MidiStream;
+	midiIn = new MidiInWin32;
+	synth = new Synth();
 }
 
 int MidiSynth::Init() {
 	QMessageBox msgBox;
 	UINT wResult;
 
-	mutex = new QMutex;
-	waveOut = new WaveOutWin32;
-//	waveOut = new WaveOutQt;
-	midiStream = new MidiStream;
-	midiIn = new MidiInWin32;
-	stream1 = new Bit16s[2 * len];
-	stream2 = new Bit16s[2 * len];
-
 	//	Init synth
-	synth = new Synth();
 	SynthProperties synthProp = {sampleRate, true, true, 0, 0, 0, pathToROMfiles,
 		NULL, MT32_Report, NULL, NULL, NULL};
 	if (!synth->open(synthProp)) {
@@ -418,24 +324,18 @@ int MidiSynth::Init() {
 	}
 #endif
 
-	wResult = waveOut->Init(this, stream1, stream2, len, sampleRate);
+	wResult = waveOut->Init(this, sampleRate);
 	if (wResult) return wResult;
 
 	wResult = midiIn->Init(this, midiStream, midiDevID);
 	if (wResult) return wResult;
 
-	//	Start playing 2 streams
-	synth->render(stream1, len);
-	synth->render(stream2, len);
-
 	pendingClose = false;
+
+	playCursor = 0;
 
 	wResult = waveOut->Start();
 	if (wResult) return wResult;
-
-	playCursor = 0;
-	bufferStartS = len;
-	bufferStartTS = clock();
 
 	wResult = midiIn->Start();
 	if (wResult) return wResult;
@@ -469,7 +369,6 @@ void MidiSynth::SetDACInputMode(DACInputMode pEmuDACInputMode) {
 void MidiSynth::SetParameters(UINT pSampleRate, UINT pMidiDevID, UINT platency) {
 	sampleRate = pSampleRate;
 	latency = platency;
-	len = UINT(latency * sampleRate / 2000.f);
 	midiDevID = pMidiDevID;
 }
 
@@ -539,16 +438,15 @@ int MidiSynth::Close() {
 
 	synth->close();
 
-	// Cleanup memory
+	return 0;
+}
+
+MidiSynth::~MidiSynth() {
 	delete synth;
-	delete stream1;
-	delete stream2;
 	delete midiIn;
 	delete midiStream;
 	delete waveOut;
 	delete mutex;
-
-	return 0;
 }
 
 }

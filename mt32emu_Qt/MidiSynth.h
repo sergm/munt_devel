@@ -8,12 +8,11 @@ namespace MT32Emu {
 class MidiStream;
 class SynthEventWin32;
 class MidiInWin32;
-class WaveOutWin32;
+class WaveOutQt;
 
 class MidiSynth {
 private:
 	unsigned int sampleRate;
-	unsigned int len;
 	unsigned int midiDevID;
 	unsigned int latency;
 	bool reverbEnabled;
@@ -22,11 +21,8 @@ private:
 	QMutex *mutex;
 	MidiStream *midiStream;
 	MidiInWin32 *midiIn;
-	WaveOutWin32 *waveOut;
-//	WaveOutQt *waveOut;
+	WaveOutQt *waveOut;
 
-	Bit16s *stream1;
-	Bit16s *stream2;
 	char *pathToROMfiles;
 
 	bool pendingClose;
@@ -42,10 +38,11 @@ public:
 #endif
 
 	MidiSynth();
+	virtual ~MidiSynth();
 	int Init();
 	int Close();
 	int Reset();
-	void Render(Bit16s *bufpos);
+	void Render(Bit16s *bufpos, qint64);
 	void PlaySysex(Bit8u *bufpos, DWORD len);
 	void SetMasterVolume(UINT pMasterVolume);
 	void SetReverbEnabled(bool pReverbEnabled);
