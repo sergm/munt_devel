@@ -287,7 +287,7 @@ void MidiSynth::Render(Bit16s *startpos, qint64 len) {
 
 MidiSynth::MidiSynth() {
 	sampleRate = 32000;
-	latency = 90;
+	latency = 150;
 	midiDevID = 0;
 	reverbEnabled = true;
 	emuDACInputMode = DACInputMode_GENERATION2;
