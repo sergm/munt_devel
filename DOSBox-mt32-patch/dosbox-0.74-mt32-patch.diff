@@ -1,4 +1,4 @@
-diff -urN dosbox-0.74/src/Makefile.am dosbox-0.74-mt32/src/Makefile.am
+diff -Nru dosbox-0.74/src/Makefile.am dosbox-0.74-mt32/src/Makefile.am
 --- dosbox-0.74/src/Makefile.am	2010-05-10 17:43:54 +0000
 +++ dosbox-0.74-mt32/src/Makefile.am	2011-04-17 18:06:01 +0000
 @@ -17,4 +17,4 @@
@@ -7,9 +7,9 @@ diff -urN dosbox-0.74/src/Makefile.am dosbox-0.74-mt32/src/Makefile.am
  
 -
 +LIBS +=  -lmt32emu
-diff -urN dosbox-0.74/src/dosbox.cpp dosbox-0.74-mt32/src/dosbox.cpp
+diff -Nru dosbox-0.74/src/dosbox.cpp dosbox-0.74-mt32/src/dosbox.cpp
 --- dosbox-0.74/src/dosbox.cpp	2010-05-10 17:43:54 +0000
-+++ dosbox-0.74-mt32/src/dosbox.cpp	2011-04-17 18:00:44 +0000
++++ dosbox-0.74-mt32/src/dosbox.cpp	2011-04-29 13:35:39 +0000
 @@ -467,7 +467,7 @@
  	
  	const char* mputypes[] = { "intelligent", "uart", "none",0};
@@ -19,19 +19,29 @@ diff -urN dosbox-0.74/src/dosbox.cpp dosbox-0.74-mt32/src/dosbox.cpp
  	Pstring = secprop->Add_string("mpu401",Property::Changeable::WhenIdle,"intelligent");
  	Pstring->Set_values(mputypes);
  	Pstring->Set_help("Type of MPU-401 to emulate.");
-@@ -480,6 +480,11 @@
+@@ -480,6 +480,21 @@
  	Pstring->Set_help("Special configuration options for the device driver. This is usually the id of the device you want to use.\n"
  	                  "  See the README/Manual for more details.");
  
-+	const char *mt32rates[] = {  "44100", "48000", "32000","22050", "16000", "11025", "8000", "49716", "auto", 0 };
-+	Pstring = secprop->Add_string("mt32rate",Property::Changeable::WhenIdle,"auto");
-+	Pstring->Set_values(mt32rates);
-+	Pstring->Set_help("MT-32 sample rate, only works if mt32 is enabled"); 
++	const char *mt32reverbModes[] = {"0", "1", "2", "3", "auto",0};
++	Pstring = secprop->Add_string("mt32reverb.mode",Property::Changeable::WhenIdle,"auto");
++	Pstring->Set_values(mt32reverbModes);
++	Pstring->Set_help("MT-32 reverb mode");
++
++	const char *mt32reverbTimes[] = {"0", "1", "2", "3", "4", "5", "6", "7",0};
++	Pint = secprop->Add_int("mt32reverb.time",Property::Changeable::WhenIdle,5);
++	Pint->Set_values(mt32reverbTimes);
++	Pint->Set_help("MT-32 reverb time"); 
++
++	const char *mt32reverbLevels[] = {"0", "1", "2", "3", "4", "5", "6", "7",0};
++	Pint = secprop->Add_int("mt32reverb.level",Property::Changeable::WhenIdle,3);
++	Pint->Set_values(mt32reverbLevels);
++	Pint->Set_help("MT-32 reverb level");
 +
  #if C_DEBUG
  	secprop=control->AddSection_prop("debug",&DEBUG_Init);
  #endif
-diff -urN dosbox-0.74/src/gui/Makefile.am dosbox-0.74-mt32/src/gui/Makefile.am
+diff -Nru dosbox-0.74/src/gui/Makefile.am dosbox-0.74-mt32/src/gui/Makefile.am
 --- dosbox-0.74/src/gui/Makefile.am	2010-05-10 17:43:54 +0000
 +++ dosbox-0.74-mt32/src/gui/Makefile.am	2011-04-17 18:06:19 +0000
 @@ -7,5 +7,5 @@
@@ -41,7 +51,7 @@ diff -urN dosbox-0.74/src/gui/Makefile.am dosbox-0.74-mt32/src/gui/Makefile.am
 -	midi_coremidi.h sdl_gui.cpp dosbox_splash.h
 +	midi_coremidi.h midi_mt32.h sdl_gui.cpp dosbox_splash.h
  
-diff -urN dosbox-0.74/src/gui/midi.cpp dosbox-0.74-mt32/src/gui/midi.cpp
+diff -Nru dosbox-0.74/src/gui/midi.cpp dosbox-0.74-mt32/src/gui/midi.cpp
 --- dosbox-0.74/src/gui/midi.cpp	2010-05-10 17:43:54 +0000
 +++ dosbox-0.74-mt32/src/gui/midi.cpp	2011-04-17 18:06:28 +0000
 @@ -98,6 +98,8 @@
@@ -53,10 +63,10 @@ diff -urN dosbox-0.74/src/gui/midi.cpp dosbox-0.74-mt32/src/gui/midi.cpp
  static struct {
  	Bitu status;
  	Bitu cmd_len;
-diff -urN dosbox-0.74/src/gui/midi_mt32.h dosbox-0.74-mt32/src/gui/midi_mt32.h
+diff -Nru dosbox-0.74/src/gui/midi_mt32.h dosbox-0.74-mt32/src/gui/midi_mt32.h
 --- dosbox-0.74/src/gui/midi_mt32.h	1970-01-01 00:00:00 +0000
-+++ dosbox-0.74-mt32/src/gui/midi_mt32.h	2011-04-17 18:17:53 +0000
-@@ -0,0 +1,269 @@
++++ dosbox-0.74-mt32/src/gui/midi_mt32.h	2011-04-29 16:38:18 +0000
+@@ -0,0 +1,274 @@
 +#include "mt32emu.h"
 +#include "mixer.h"
 +#include "control.h"
@@ -66,6 +76,7 @@ diff -urN dosbox-0.74/src/gui/midi_mt32.h dosbox-0.74-mt32/src/gui/midi_mt32.h
 +#include <string>  
 +
 +using namespace std;   
++
 +#ifdef MT32MULTICORE
 +static inline void cpuID(unsigned i, unsigned regs[4]) { 
 +   __asm__ __volatile__
@@ -104,6 +115,7 @@ diff -urN dosbox-0.74/src/gui/midi_mt32.h dosbox-0.74-mt32/src/gui/midi_mt32.h
 +   return 0;
 +}
 +#endif
++
 +MT32Emu::Synth *_usesynth;
 +MixerChannel *mt32chan = NULL;
 +
@@ -214,18 +226,7 @@ diff -urN dosbox-0.74/src/gui/midi_mt32.h dosbox-0.74-mt32/src/gui/midi_mt32.h
 +   bool Open(const char * conf) {
 +      MT32Emu::SynthProperties tmpProp;
 +      memset(&tmpProp, 0, sizeof(tmpProp));
-+      //tmpProp.sampleRate = atoi(conf);
-+      Section_prop* section=static_cast<Section_prop *>(control->GetSection("midi"));
-+      if(!strcmp(section->Get_string("mt32rate"),"auto")) {
-+            section=static_cast<Section_prop *>(control->GetSection("mixer"));
-+            tmpProp.sampleRate = section->Get_int("rate");
-+            if(tmpProp.sampleRate < 32000) tmpProp.sampleRate = 16000;
-+            else tmpProp.sampleRate = 32000;
-+      } else {
-+          tmpProp.sampleRate=atoi(section->Get_string("mt32rate"));
-+          if (!tmpProp.sampleRate) tmpProp.sampleRate = 32000;
-+      }
-+      LOG_MSG("MT32:Set sample rate to %d", tmpProp.sampleRate);
++      tmpProp.sampleRate = 32000;
 +
 +      tmpProp.useDefaultReverb = false;
 +      tmpProp.useReverb = true;
@@ -242,10 +243,22 @@ diff -urN dosbox-0.74/src/gui/midi_mt32.h dosbox-0.74-mt32/src/gui/midi_mt32.h
 +      }
 +      _usesynth=_synth;
 +
-+      if (mt32chan == NULL)
++			Section_prop* section=static_cast<Section_prop *>(control->GetSection("midi"));
++      if(strcmp(section->Get_string("mt32reverb.mode"),"auto")) {
++					Bit8u reverbsysex[] = {0x10, 0x00, 0x01, 0x00, 0x05, 0x03};
++					reverbsysex[3] = (Bit8u)atoi(section->Get_string("mt32reverb.mode"));
++					reverbsysex[4] = (Bit8u)section->Get_int("mt32reverb.time");
++					reverbsysex[5] = (Bit8u)section->Get_int("mt32reverb.level");
++					_synth->writeSysex(16, reverbsysex, 6);
++					_synth->setReverbOverridden(true);
++      } else {
++		      LOG_MSG("MT32: Using default reverb");
++      }
++
++			if (mt32chan == NULL)
 +          mt32chan=MIXER_AddChannel(MT32_CallBack,tmpProp.sampleRate,"MT32");
 +
-+      mt32chan->Enable(false);
++      mt32chan->Enable(true);
 +
 +      /* Create MT32 thread */
 +#ifdef MT32MULTICORE
@@ -261,7 +274,8 @@ diff -urN dosbox-0.74/src/gui/midi_mt32.h dosbox-0.74-mt32/src/gui/midi_mt32.h
 +#endif
 +      return true;
 +   };
-+   void Close(void) {
++
++	 void Close(void) {
 +      if (!isOpen) return;
 +      mt32chan->Enable(false);
 +#ifdef MT32MULTICORE
@@ -278,8 +292,8 @@ diff -urN dosbox-0.74/src/gui/midi_mt32.h dosbox-0.74-mt32/src/gui/midi_mt32.h
 +      _usesynth=_synth;
 +      isOpen=false;
 +   };
-+   void PlayMsg(Bit8u * msg) {
-+      mt32chan->Enable(true);
++
++	 void PlayMsg(Bit8u * msg) {
 +#ifdef MT32MULTICORE
 +      if(mt32.multicore) {
 +          // Try to queue play commands
@@ -301,7 +315,8 @@ diff -urN dosbox-0.74/src/gui/midi_mt32.h dosbox-0.74-mt32/src/gui/midi_mt32.h
 +     }
 +#endif
 +   };
-+   void PlaySysex(Bit8u * sysex,Bitu len) {
++
++	 void PlaySysex(Bit8u * sysex,Bitu len) {
 +#ifdef MT32MULTICORE
 +      if(mt32.multicore) {
 +          SDL_LockMutex(mt32.mutex);
