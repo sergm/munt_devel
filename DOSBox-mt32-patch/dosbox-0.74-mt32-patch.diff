@@ -9,7 +9,7 @@ diff -Nru dosbox-0.74/src/Makefile.am dosbox-0.74-mt32/src/Makefile.am
 +LIBS +=  -lmt32emu
 diff -Nru dosbox-0.74/src/dosbox.cpp dosbox-0.74-mt32/src/dosbox.cpp
 --- dosbox-0.74/src/dosbox.cpp	2010-05-10 17:43:54 +0000
-+++ dosbox-0.74-mt32/src/dosbox.cpp	2011-04-29 13:35:39 +0000
++++ dosbox-0.74-mt32/src/dosbox.cpp	2011-05-01 03:14:37 +0000
 @@ -467,7 +467,7 @@
  	
  	const char* mputypes[] = { "intelligent", "uart", "none",0};
@@ -19,10 +19,41 @@ diff -Nru dosbox-0.74/src/dosbox.cpp dosbox-0.74-mt32/src/dosbox.cpp
  	Pstring = secprop->Add_string("mpu401",Property::Changeable::WhenIdle,"intelligent");
  	Pstring->Set_values(mputypes);
  	Pstring->Set_help("Type of MPU-401 to emulate.");
-@@ -480,6 +480,21 @@
+@@ -480,6 +480,52 @@
  	Pstring->Set_help("Special configuration options for the device driver. This is usually the id of the device you want to use.\n"
  	                  "  See the README/Manual for more details.");
  
++	const char *mt32log[] = {"off", "on",0};
++	Pstring = secprop->Add_string("mt32log",Property::Changeable::WhenIdle,"off");
++	Pstring->Set_values(mt32log);
++	Pstring->Set_help("MT-32 debug logging");
++
++	const char *mt32DACModes[] = {"0", "1", "2", "3", "auto",0};
++	Pstring = secprop->Add_string("mt32DAC",Property::Changeable::WhenIdle,"auto");
++	Pstring->Set_values(mt32DACModes);
++	Pstring->Set_help("MT-32 DAC input mode\n"
++		"Nice = 0 - default\n"
++		"Produces samples at double the volume, without tricks.\n"
++		"Higher quality than the real devices\n\n"
++
++		"Pure = 1\n"
++		"Produces samples that exactly match the bits output from the emulated LA32.\n"
++		"Nicer overdrive characteristics than the DAC hacks (it simply clips samples within range)\n"
++		"Much less likely to overdrive than any other mode.\n"
++		"Half the volume of any of the other modes, meaning its volume relative to the reverb\n"
++		"output when mixed together directly will sound wrong. So, reverb level must be lowered.\n"
++		"Perfect for developers while debugging :)\n\n"
++
++		"GENERATION1 = 2\n"
++		"Re-orders the LA32 output bits as in early generation MT-32s (according to Wikipedia).\n"
++		"Bit order at DAC (where each number represents the original LA32 output bit number, and XX means the bit is always low):\n"
++		"15 13 12 11 10 09 08 07 06 05 04 03 02 01 00 XX\n\n"
++
++		"GENERATION2 = 3\n"
++		"Re-orders the LA32 output bits as in later geneerations (personally confirmed on my CM-32L - KG).\n"
++		"Bit order at DAC (where each number represents the original LA32 output bit number):\n"
++		"15 13 12 11 10 09 08 07 06 05 04 03 02 01 00 14\n\n");
++
 +	const char *mt32reverbModes[] = {"0", "1", "2", "3", "auto",0};
 +	Pstring = secprop->Add_string("mt32reverb.mode",Property::Changeable::WhenIdle,"auto");
 +	Pstring->Set_values(mt32reverbModes);
@@ -31,7 +62,7 @@ diff -Nru dosbox-0.74/src/dosbox.cpp dosbox-0.74-mt32/src/dosbox.cpp
 +	const char *mt32reverbTimes[] = {"0", "1", "2", "3", "4", "5", "6", "7",0};
 +	Pint = secprop->Add_int("mt32reverb.time",Property::Changeable::WhenIdle,5);
 +	Pint->Set_values(mt32reverbTimes);
-+	Pint->Set_help("MT-32 reverb time"); 
++	Pint->Set_help("MT-32 reverb decaying time"); 
 +
 +	const char *mt32reverbLevels[] = {"0", "1", "2", "3", "4", "5", "6", "7",0};
 +	Pint = secprop->Add_int("mt32reverb.level",Property::Changeable::WhenIdle,3);
@@ -65,8 +96,8 @@ diff -Nru dosbox-0.74/src/gui/midi.cpp dosbox-0.74-mt32/src/gui/midi.cpp
  	Bitu cmd_len;
 diff -Nru dosbox-0.74/src/gui/midi_mt32.h dosbox-0.74-mt32/src/gui/midi_mt32.h
 --- dosbox-0.74/src/gui/midi_mt32.h	1970-01-01 00:00:00 +0000
-+++ dosbox-0.74-mt32/src/gui/midi_mt32.h	2011-04-29 16:38:18 +0000
-@@ -0,0 +1,274 @@
++++ dosbox-0.74-mt32/src/gui/midi_mt32.h	2011-05-01 03:12:25 +0000
+@@ -0,0 +1,296 @@
 +#include "mt32emu.h"
 +#include "mixer.h"
 +#include "control.h"
@@ -118,6 +149,7 @@ diff -Nru dosbox-0.74/src/gui/midi_mt32.h dosbox-0.74-mt32/src/gui/midi_mt32.h
 +
 +MT32Emu::Synth *_usesynth;
 +MixerChannel *mt32chan = NULL;
++bool noise = false;
 +
 +static struct {
 +#ifdef MT32MULTICORE
@@ -202,16 +234,27 @@ diff -Nru dosbox-0.74/src/gui/midi_mt32.h dosbox-0.74-mt32/src/gui/midi_mt32.h
 +static int report(void *userData, MT32Emu::ReportType type, const void *reportData) {
 +   switch(type) {
 +   case MT32Emu::ReportType_errorControlROM:
-+      LOG_MSG("MT32:Couldn't find control files");
++      LOG_MSG("MT32: Couldn't find Control ROM file");
 +      break;
 +   case MT32Emu::ReportType_errorPCMROM:
-+      LOG_MSG("MT32:Couldn't open MT32_PCM.ROM file");
++      LOG_MSG("MT32: Couldn't open PCM ROM file");
++      break;
++   case MT32Emu::ReportType_lcdMessage:
++		 LOG_MSG("MT32: LCD-Message: %s", reportData);
 +      break;
 +   default:
 +      //LOG(LOG_ALL,LOG_NORMAL)("MT32: Report %d",type);
 +      break;
 +   }
 +   return 0;
++}
++
++void printDebug(void *userData, const char *fmt, va_list list) {
++	if (noise) {
++		printf("MT32: ");
++		vprintf(fmt, list);
++		printf("\n");
++	}
 +}
 +
 +class MidiHandler_mt32: public MidiHandler {
@@ -234,11 +277,11 @@ diff -Nru dosbox-0.74/src/gui/midi_mt32.h dosbox-0.74-mt32/src/gui/midi_mt32.h
 +      tmpProp.reverbTime = 5;
 +      tmpProp.reverbLevel = 3;
 +      tmpProp.userData = this;
-+      //tmpProp.printDebug = &vdebug;
++      tmpProp.printDebug = printDebug;
 +      tmpProp.report = &report;
 +      _synth = new MT32Emu::Synth();
 +      if (_synth->open(tmpProp)==0) {
-+         LOG(LOG_ALL,LOG_ERROR)("MT32:Error initialising emulation");
++         LOG_MSG("MT32: Error initialising emulation");
 +         return false;
 +      }
 +      _usesynth=_synth;
@@ -254,6 +297,16 @@ diff -Nru dosbox-0.74/src/gui/midi_mt32.h dosbox-0.74-mt32/src/gui/midi_mt32.h
 +      } else {
 +		      LOG_MSG("MT32: Using default reverb");
 +      }
++
++      if(strcmp(section->Get_string("mt32DAC"),"auto")) {
++				_synth->setDACInputMode((MT32Emu::DACInputMode)atoi(section->Get_string("mt32DAC")));
++			}
++
++      if(!strcmp(section->Get_string("mt32log"),"on")) {
++				noise = true;
++			} else {
++				noise = false;
++			}
 +
 +			if (mt32chan == NULL)
 +          mt32chan=MIXER_AddChannel(MT32_CallBack,tmpProp.sampleRate,"MT32");
