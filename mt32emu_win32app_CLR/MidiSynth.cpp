@@ -281,6 +281,18 @@ public:
 		}
 		return 0;
 	}
+
+	int GetPos() {
+		MMTIME mmTime;
+		mmTime.wType = TIME_SAMPLES;
+
+		if (waveOutGetPosition(hWaveOut, &mmTime, sizeof MMTIME) != MMSYSERR_NOERROR) {
+			MessageBox(NULL, L"Failed to get current playback position", NULL, MB_OK | MB_ICONEXCLAMATION);
+			return 10;
+		}
+//		std::cout << "TIME_SAMPLES = " << mmTime.u.sample << "\n";
+		return mmTime.u.sample;
+	}
 } waveOut;
 
 int MT32_Report(void *userData, ReportType type, const void *reportData) {
@@ -302,9 +314,6 @@ void MidiSynth::Render(Bit16s *startpos) {
 	int playlen;
 	Bit16s *bufpos = startpos;
 
-	// Set timestamp of buffer start
-	bufferStartS = playCursor + len;
-	bufferStartTS = clock();
 
 	for(;;) {
 		timeStamp = midiStream.PeekMessageTime();
@@ -402,8 +411,6 @@ int MidiSynth::Init() {
 	if (wResult) return wResult;
 
 	playCursor = 0;
-	bufferStartS = len;
-	bufferStartTS = clock();
 
 	wResult = midiIn.Start();
 	if (wResult) return wResult;
@@ -473,7 +480,7 @@ void MidiSynth::PlaySysex(Bit8u *bufpos, DWORD len) {
 }
 
 DWORD MidiSynth::GetTimeStamp() {
-	return bufferStartS + DWORD(sampleRate / 1000.f * (clock() - bufferStartTS));
+	return waveOut.GetPos();
 }
 
 int MidiSynth::Close() {
