@@ -26,7 +26,7 @@ private:
 	char *pathToROMfiles;
 
 	bool pendingClose;
-	DWORD bufferStartTS, bufferStartS;
+	double StartTime;
 	DWORD playCursor;
 
 	Synth *synth;

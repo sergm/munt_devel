@@ -164,9 +164,9 @@ public:
 		return paContinue;
 	}
 
-	int Init(MidiSynth *midiSynth, unsigned int sampleRate) {
+	int Init(MidiSynth *midiSynth, unsigned int sampleRate, DWORD latency) {
 		Pa_Initialize();
-		PaStreamParameters p = {Pa_GetDefaultOutputDevice(), 2, paInt16, 0.05, NULL};
+		PaStreamParameters p = {Pa_GetDefaultOutputDevice(), 2, paInt16, latency / 1000.0f, NULL};
 		return Pa_OpenStream(&stream, NULL, &p, sampleRate, paFramesPerBufferUnspecified,
 			paNoFlag, &WaveOutPa::Render, midiSynth);
 	}
@@ -188,6 +188,10 @@ public:
 
 	int Resume() {
 		return Start();
+	}
+
+	double GetPos() {
+		return Pa_GetStreamTime(stream);
 	}
 };
 
@@ -212,10 +216,6 @@ void MidiSynth::Render(Bit16s *startpos, qint64 len) {
 	int buflen = len;
 	int playlen;
 	Bit16s *bufpos = startpos;
-
-	// Set timestamp of buffer start
-	bufferStartS = playCursor;
-	bufferStartTS = clock() - latency;
 
 	for(;;) {
 		timeStamp = midiStream->PeekMessageTime();
@@ -299,7 +299,7 @@ int MidiSynth::Init() {
 	}
 #endif
 
-	wResult = waveOut->Init(this, sampleRate);
+	wResult = waveOut->Init(this, sampleRate, latency);
 	if (wResult) {
 		msgBox.setText("Can't open WaveOut");
 		msgBox.exec();
@@ -315,16 +315,15 @@ int MidiSynth::Init() {
 
 	pendingClose = false;
 
-	playCursor = 0;
-	bufferStartS = 0;
-	bufferStartTS = clock() - latency;
-
 	wResult = waveOut->Start();
 	if (wResult) {
 		msgBox.setText("Can't start WaveOut");
 		msgBox.exec();
 		return wResult;
 	}
+
+	playCursor = 0;
+	StartTime = waveOut->GetPos();
 
 	wResult = midiIn->Start();
 	if (wResult) {
@@ -405,7 +404,7 @@ void MidiSynth::PlaySysex(Bit8u *bufpos, DWORD len) {
 }
 
 DWORD MidiSynth::GetTimeStamp() {
-	return bufferStartS + DWORD(sampleRate / 1000.f * (clock() - bufferStartTS));
+	return DWORD(sampleRate * (waveOut->GetPos() - StartTime));
 }
 
 int MidiSynth::Close() {
