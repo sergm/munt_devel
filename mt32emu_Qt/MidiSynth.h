@@ -8,7 +8,7 @@ namespace MT32Emu {
 class MidiStream;
 class SynthEventWin32;
 class MidiInWin32;
-class WaveOutQt;
+class WaveOutPa;
 
 class MidiSynth {
 private:
@@ -21,7 +21,7 @@ private:
 	QMutex *mutex;
 	MidiStream *midiStream;
 	MidiInWin32 *midiIn;
-	WaveOutQt *waveOut;
+	WaveOutPa *waveOut;
 
 	char *pathToROMfiles;
 

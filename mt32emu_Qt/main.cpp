@@ -12,7 +12,9 @@ int main(int argv, char **args)
     app.setApplicationName("Roland MT-32 Emulator");
 
 	midiSynth = new MidiSynth;
-	midiSynth->Init();
+	if (midiSynth->Init()) {
+		return -1;
+	}
 
 	QDialog mainWindow;
 	Ui::MainWindow ui_MainWindow;

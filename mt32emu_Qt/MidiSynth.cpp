@@ -61,7 +61,7 @@ private:
 	MIDIHDR MidiInHdr;
 	Bit8u sysexbuf[4096];
 
-static void CALLBACK MidiInProc(HMIDIIN hMidiIn, UINT wMsg, DWORD_PTR dwInstance, DWORD_PTR dwParam1, DWORD_PTR dwParam2) {
+static void CALLBACK MidiInProc(HMIDIIN hMidiIn, UINT wMsg, DWORD_PTR dwInstance, DWORD_PTR dwParam1, DWORD_PTR /* dwParam2 */) {
 	MidiInWin32 *inst;
 
 	inst = (MidiInWin32*)dwInstance;
@@ -148,89 +148,62 @@ public:
 	}
 };
 
-class WaveGenerator : public QIODevice {
+class WaveOutPa {
 private:
-	MidiSynth *midiSynth;
+PaStream *stream;
 
 public:
-	WaveGenerator(MidiSynth *pMidiSynth) {
-		midiSynth = pMidiSynth;
-		open(QIODevice::ReadOnly);
-	}
+	static int Render(const void *, void *output, unsigned long frameCount,
+		const PaStreamCallbackTimeInfo *, PaStreamCallbackFlags, void *userData) {
 
-	qint64 readData(char *data, qint64 len)
-	{
+		MidiSynth *midiSynth = (MidiSynth *)userData;
 		if (midiSynth->IsPendingClose()) {
-			return 0;
+			return paComplete;
 		}
-		midiSynth->Render((Bit16s*)data, len >> 2);
-		return len;
+		midiSynth->Render((Bit16s*)output, frameCount);
+		return paContinue;
 	}
 
-	qint64 writeData(const char *data, qint64 len) {
-	    Q_UNUSED(data);
-		Q_UNUSED(len);
-		return 0;
-	}
-};
-
-class WaveOutQt {
-private:
-	QAudioOutput *audioOutput;
-	WaveGenerator *waveGenerator;
-
-public:
 	int Init(MidiSynth *midiSynth, unsigned int sampleRate) {
-		QAudioFormat format;
-
-		format.setFrequency(sampleRate);
-		format.setChannels(2);
-		format.setSampleSize(16);
-		format.setCodec("audio/pcm");
-		format.setByteOrder(QAudioFormat::LittleEndian);
-		format.setSampleType(QAudioFormat::SignedInt);
-
-		waveGenerator = new WaveGenerator(midiSynth);
-		audioOutput = new QAudioOutput(format, waveGenerator);
-
-		return 0;
+		Pa_Initialize();
+		PaStreamParameters p = {Pa_GetDefaultOutputDevice(), 2, paInt16, 0.05, NULL};
+		return Pa_OpenStream(&stream, NULL, &p, sampleRate, paFramesPerBufferUnspecified,
+			paNoFlag, &WaveOutPa::Render, midiSynth);
 	}
 
 	int Close() {
-		audioOutput->stop();
-
-		delete audioOutput;
-		delete waveGenerator;
-
+		Pa_CloseStream(stream);
 		return 0;
 	}
 
 	int Start() {
-		audioOutput->start(waveGenerator);
+		Pa_StartStream(stream);
 		return 0;
 	}
 
 	int Pause() {
-		audioOutput->suspend();
+		Pa_StopStream(stream);
 		return 0;
 	}
 
 	int Resume() {
-		audioOutput->resume();
-		return 0;
+		return Start();
 	}
 };
 
-int MT32_Report(void *userData, ReportType type, const void *reportData) {
+
 #if MT32EMU_USE_EXTINT == 1
-	midiSynth->handleReport(type, reportData);
-#endif
+int MT32_Report(void * /* userData */, ReportType type, const void *reportData) {
+//	mt32emuExtInt->handleReport(type, reportData);
 	return 0;
 }
-
 void MidiSynth::handleReport(ReportType type, const void *reportData) {
-#if MT32EMU_USE_EXTINT == 1
 	mt32emuExtInt->handleReport(synth, type, reportData);
+#else
+int MT32_Report(void *, ReportType, const void *) {
+	return 0;
+}
+void MidiSynth::handleReport(ReportType, const void *) {
 #endif
 }
 
@@ -253,7 +226,9 @@ void MidiSynth::Render(Bit16s *startpos, qint64 len) {
 		playlen = int(timeStamp - playCursor);
 		if (playlen > buflen)	// if midiMessage is too far - exit
 			break;
-//		if (playlen < 0) std::cout << "Play MIDI message at neg timeStamp " << timeStamp << ", playCursor " << playCursor << " samples\n";
+		if (playlen < 0) {
+			std::cout << "Play MIDI message at neg timeStamp " << timeStamp << ", playCursor " << playCursor << " samples\n";
+		}
 		if (playlen > 0) {		// if midiMessage with same timeStamp - skip rendering
 			mutex->lock();
 			synth->render(bufpos, playlen);
@@ -268,7 +243,6 @@ void MidiSynth::Render(Bit16s *startpos, qint64 len) {
 		mutex->lock();
 		synth->playMsg(msg);
 		mutex->unlock();
-//		std::cout << "Play MIDI message " << msg << " at " << timeStamp / 1000.f << " ms\n";
 	}
 
 	//	render rest of samples
@@ -287,14 +261,14 @@ void MidiSynth::Render(Bit16s *startpos, qint64 len) {
 
 MidiSynth::MidiSynth() {
 	sampleRate = 32000;
-	latency = 150;
+	latency = 50;
 	midiDevID = 0;
 	reverbEnabled = true;
 	emuDACInputMode = DACInputMode_GENERATION2;
 	pathToROMfiles = "C:/WINDOWS/SYSTEM32/";
 
 	mutex = new QMutex;
-	waveOut = new WaveOutQt;
+	waveOut = new WaveOutPa;
 	midiStream = new MidiStream;
 	midiIn = new MidiInWin32;
 	synth = new Synth();
@@ -326,10 +300,18 @@ int MidiSynth::Init() {
 #endif
 
 	wResult = waveOut->Init(this, sampleRate);
-	if (wResult) return wResult;
+	if (wResult) {
+		msgBox.setText("Can't open WaveOut");
+		msgBox.exec();
+		return wResult;
+	}
 
 	wResult = midiIn->Init(this, midiStream, midiDevID);
-	if (wResult) return wResult;
+	if (wResult) {
+		msgBox.setText("Can't open MidiIn");
+		msgBox.exec();
+		return wResult;
+	}
 
 	pendingClose = false;
 
@@ -338,10 +320,18 @@ int MidiSynth::Init() {
 	bufferStartTS = clock() - latency;
 
 	wResult = waveOut->Start();
-	if (wResult) return wResult;
+	if (wResult) {
+		msgBox.setText("Can't start WaveOut");
+		msgBox.exec();
+		return wResult;
+	}
 
 	wResult = midiIn->Start();
-	if (wResult) return wResult;
+	if (wResult) {
+		msgBox.setText("Can't start MidiIn");
+		msgBox.exec();
+		return wResult;
+	}
 	
 	return 0;
 }

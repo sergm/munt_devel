@@ -13,7 +13,7 @@
 #include "externalInterface.h"
 #endif
 
-#include <QtMultimedia/QAudioOutput>
 #include <QMessageBox>
 #include <QMutex>
+#include <portaudio.h>
 #include "MidiSynth.h"
