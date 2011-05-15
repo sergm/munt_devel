@@ -471,7 +471,7 @@ void MidiSynth::SetDACInputMode(DACInputMode pEmuDACInputMode) {
 void MidiSynth::SetParameters(UINT pSampleRate, UINT pMidiDevID, UINT platency) {
 	sampleRate = pSampleRate;
 	latency = platency;
-	len = UINT(latency * sampleRate / 2000.f);
+	len = UINT(latency * sampleRate / 4000.f);
 	midiDevID = pMidiDevID;
 }
 
