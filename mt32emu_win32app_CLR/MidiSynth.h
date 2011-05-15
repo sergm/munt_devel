@@ -16,6 +16,8 @@ private:
 
 	Bit16s *stream1;
 	Bit16s *stream2;
+	Bit16s *stream3;
+	Bit16s *stream4;
 	char *pathToROMfiles;
 
 	bool pendingClose;

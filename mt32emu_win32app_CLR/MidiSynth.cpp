@@ -174,6 +174,8 @@ private:
 	HWAVEOUT	hWaveOut;
 	WAVEHDR		WaveHdr1;
 	WAVEHDR		WaveHdr2;
+	WAVEHDR		WaveHdr3;
+	WAVEHDR		WaveHdr4;
 
 static void CALLBACK waveOutProc(HWAVEOUT hWaveOut, UINT uMsg, DWORD_PTR dwInstance, DWORD_PTR dwParam1, DWORD_PTR dwParam2) {
 	if (uMsg != WOM_DONE)
@@ -191,7 +193,7 @@ static void CALLBACK waveOutProc(HWAVEOUT hWaveOut, UINT uMsg, DWORD_PTR dwInsta
 }
 
 public:
-	int Init(Bit16s *stream1, Bit16s *stream2, unsigned int len, unsigned int sampleRate) {
+	int Init(Bit16s *stream1, Bit16s *stream2, Bit16s *stream3, Bit16s *stream4, unsigned int len, unsigned int sampleRate) {
 		int wResult;
 		PCMWAVEFORMAT wFormat = {WAVE_FORMAT_PCM, 2, sampleRate, sampleRate * 4, 4, 16};
 
@@ -202,7 +204,7 @@ public:
 			return 2;
 		}
 
-		//	Prepare 2 Headers
+		//	Prepare 4 Headers
 		WaveHdr1.lpData = (LPSTR)stream1;
 		WaveHdr1.dwBufferLength = 4 * len;
 		WaveHdr1.dwFlags = 0L;
@@ -220,6 +222,26 @@ public:
 		wResult = waveOutPrepareHeader(hWaveOut, &WaveHdr2, sizeof(WAVEHDR));
 		if (wResult != MMSYSERR_NOERROR) {
 			MessageBox(NULL, L"Failed to Prepare Header 2", NULL, MB_OK | MB_ICONEXCLAMATION);
+			return 3;
+		}
+
+		WaveHdr3.lpData = (LPSTR)stream3;
+		WaveHdr3.dwBufferLength = 4 * len;
+		WaveHdr3.dwFlags = 0L;
+		WaveHdr3.dwLoops = 0L;
+		wResult = waveOutPrepareHeader(hWaveOut, &WaveHdr3, sizeof(WAVEHDR));
+		if (wResult != MMSYSERR_NOERROR) {
+			MessageBox(NULL, L"Failed to Prepare Header 3", NULL, MB_OK | MB_ICONEXCLAMATION);
+			return 3;
+		}
+
+		WaveHdr4.lpData = (LPSTR)stream4;
+		WaveHdr4.dwBufferLength = 4 * len;
+		WaveHdr4.dwFlags = 0L;
+		WaveHdr4.dwLoops = 0L;
+		wResult = waveOutPrepareHeader(hWaveOut, &WaveHdr4, sizeof(WAVEHDR));
+		if (wResult != MMSYSERR_NOERROR) {
+			MessageBox(NULL, L"Failed to Prepare Header 4", NULL, MB_OK | MB_ICONEXCLAMATION);
 			return 3;
 		}
 		return 0;
@@ -263,6 +285,14 @@ public:
 			MessageBox(NULL, L"Failed to write block to device", NULL, MB_OK | MB_ICONEXCLAMATION);
 			return 4;
 		}
+		if (waveOutWrite(hWaveOut, &WaveHdr3, sizeof(WAVEHDR)) != MMSYSERR_NOERROR) {
+			MessageBox(NULL, L"Failed to write block to device", NULL, MB_OK | MB_ICONEXCLAMATION);
+			return 4;
+		}
+		if (waveOutWrite(hWaveOut, &WaveHdr4, sizeof(WAVEHDR)) != MMSYSERR_NOERROR) {
+			MessageBox(NULL, L"Failed to write block to device", NULL, MB_OK | MB_ICONEXCLAMATION);
+			return 4;
+		}
 		return 0;
 	}
 
@@ -290,7 +320,6 @@ public:
 			MessageBox(NULL, L"Failed to get current playback position", NULL, MB_OK | MB_ICONEXCLAMATION);
 			return 10;
 		}
-//		std::cout << "TIME_SAMPLES = " << mmTime.u.sample << "\n";
 		return mmTime.u.sample;
 	}
 } waveOut;
@@ -313,7 +342,6 @@ void MidiSynth::Render(Bit16s *startpos) {
 	int buflen = len;
 	int playlen;
 	Bit16s *bufpos = startpos;
-
 
 	for(;;) {
 		timeStamp = midiStream.PeekMessageTime();
@@ -339,7 +367,6 @@ void MidiSynth::Render(Bit16s *startpos) {
 		synthEvent.Wait();
 		synth->playMsg(msg);
 		synthEvent.Release();
-//		std::cout << "Play MIDI message " << msg << " at " << timeStamp / 1000.f << " ms\n";
 	}
 
 	//	render rest of samples
@@ -357,8 +384,8 @@ void MidiSynth::Render(Bit16s *startpos) {
 MidiSynth::MidiSynth() {
 	midiSynth = this;
 	sampleRate = 32000;
-	latency = 150;
-	len = UINT(sampleRate * latency / 2000.f);
+	latency = 75;
+	len = UINT(sampleRate * latency / 4000.f);
 	midiDevID = 0;
 	reverbEnabled = true;
 	emuDACInputMode = DACInputMode_GENERATION2;
@@ -370,6 +397,8 @@ int MidiSynth::Init() {
 
 	stream1 = new Bit16s[2 * len];
 	stream2 = new Bit16s[2 * len];
+	stream3 = new Bit16s[2 * len];
+	stream4 = new Bit16s[2 * len];
 
 	//	Init synth
 	if (synthEvent.Init()) {
@@ -395,7 +424,7 @@ int MidiSynth::Init() {
 	}
 #endif
 
-	wResult = waveOut.Init(stream1, stream2, len, sampleRate);
+	wResult = waveOut.Init(stream1, stream2, stream3, stream4, len, sampleRate);
 	if (wResult) return wResult;
 
 	wResult = midiIn.Init(midiDevID);
@@ -404,6 +433,8 @@ int MidiSynth::Init() {
 	//	Start playing 2 streams
 	synth->render(stream1, len);
 	synth->render(stream2, len);
+	synth->render(stream3, len);
+	synth->render(stream4, len);
 
 	pendingClose = false;
 
@@ -487,7 +518,7 @@ int MidiSynth::Close() {
 	UINT wResult;
 	pendingClose = true;
 
-//	Close External Interface
+	// Close External Interface
 #if MT32EMU_USE_EXTINT == 1
 	if(mt32emuExtInt != NULL) {
 		mt32emuExtInt->stop();
