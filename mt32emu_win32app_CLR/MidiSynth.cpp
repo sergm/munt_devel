@@ -177,28 +177,57 @@ private:
 	WAVEHDR		WaveHdr3;
 	WAVEHDR		WaveHdr4;
 
-static void CALLBACK waveOutProc(HWAVEOUT hWaveOut, UINT uMsg, DWORD_PTR dwInstance, DWORD_PTR dwParam1, DWORD_PTR dwParam2) {
-	if (uMsg != WOM_DONE)
-		return;
+	HANDLE		hEvent;
 
-	if (midiSynth->IsPendingClose())
-		return;
+public:
+static void waveOutProc(void *) {
+	for (;;) {
+		WaitForSingleObject(waveOut.hEvent, INFINITE);
 
-	LPWAVEHDR pWaveHdr = LPWAVEHDR(dwParam1);
-	midiSynth->Render((Bit16s*)pWaveHdr->lpData);
+		if (midiSynth->IsPendingClose()) break;
 
-	if (waveOutWrite(hWaveOut, pWaveHdr, sizeof(WAVEHDR)) != MMSYSERR_NOERROR) {
-		MessageBox(NULL, L"Failed to write block to device", NULL, MB_OK | MB_ICONEXCLAMATION);
+		if (waveOut.WaveHdr1.dwFlags & WHDR_DONE) {
+			midiSynth->Render((Bit16s *)waveOut.WaveHdr1.lpData);
+			if (waveOutWrite(waveOut.hWaveOut, &waveOut.WaveHdr1, sizeof(WAVEHDR)) != MMSYSERR_NOERROR) {
+				MessageBox(NULL, L"Failed to write block to device", NULL, MB_OK | MB_ICONEXCLAMATION);
+			}
+		}
+
+		if (waveOut.WaveHdr2.dwFlags & WHDR_DONE) {
+			midiSynth->Render((Bit16s *)waveOut.WaveHdr2.lpData);
+			if (waveOutWrite(waveOut.hWaveOut, &waveOut.WaveHdr2, sizeof(WAVEHDR)) != MMSYSERR_NOERROR) {
+				MessageBox(NULL, L"Failed to write block to device", NULL, MB_OK | MB_ICONEXCLAMATION);
+			}
+		}
+
+		if (waveOut.WaveHdr3.dwFlags & WHDR_DONE) {
+			midiSynth->Render((Bit16s *)waveOut.WaveHdr3.lpData);
+			if (waveOutWrite(waveOut.hWaveOut, &waveOut.WaveHdr3, sizeof(WAVEHDR)) != MMSYSERR_NOERROR) {
+				MessageBox(NULL, L"Failed to write block to device", NULL, MB_OK | MB_ICONEXCLAMATION);
+			}
+		}
+
+		if (waveOut.WaveHdr4.dwFlags & WHDR_DONE) {
+			midiSynth->Render((Bit16s *)waveOut.WaveHdr4.lpData);
+			if (waveOutWrite(waveOut.hWaveOut, &waveOut.WaveHdr4, sizeof(WAVEHDR)) != MMSYSERR_NOERROR) {
+				MessageBox(NULL, L"Failed to write block to device", NULL, MB_OK | MB_ICONEXCLAMATION);
+			}
+		}
 	}
 }
 
-public:
 	int Init(Bit16s *stream1, Bit16s *stream2, Bit16s *stream3, Bit16s *stream4, unsigned int len, unsigned int sampleRate) {
 		int wResult;
 		PCMWAVEFORMAT wFormat = {WAVE_FORMAT_PCM, 2, sampleRate, sampleRate * 4, 4, 16};
 
+		hEvent = CreateEvent(NULL, false, true, NULL);
+		if (hEvent == NULL) {
+			MessageBox(NULL, L"Can't create waveOut sync object", NULL, MB_OK | MB_ICONEXCLAMATION);
+			return 1;
+		}
+
 		//	Open waveout device
-		wResult = waveOutOpen(&hWaveOut, WAVE_MAPPER, (LPWAVEFORMATEX)&wFormat, (DWORD_PTR)waveOutProc, (DWORD_PTR)&midiSynth, CALLBACK_FUNCTION);
+		wResult = waveOutOpen(&hWaveOut, WAVE_MAPPER, (LPWAVEFORMATEX)&wFormat, (DWORD_PTR)hEvent, (DWORD_PTR)&midiSynth, CALLBACK_EVENT);
 		if (wResult != MMSYSERR_NOERROR) {
 			MessageBox(NULL, L"Failed to open waveform output device.", NULL, MB_OK | MB_ICONEXCLAMATION);
 			return 2;
@@ -273,6 +302,8 @@ public:
 			MessageBox(NULL, L"Failed to Close WaveOut", NULL, MB_OK | MB_ICONEXCLAMATION);
 			return 8;
 		}
+
+		CloseHandle(hEvent);
 		return 0;
 	}
 
@@ -352,7 +383,9 @@ void MidiSynth::Render(Bit16s *startpos) {
 		playlen = int(timeStamp - playCursor);
 		if (playlen > buflen)	// if midiMessage is too far - exit
 			break;
-//		if (playlen < 0) std::cout << "Play MIDI message at neg timeStamp " << timeStamp << ", playCursor " << playCursor << " samples\n";
+		if (playlen < 0) {
+			std::cout << "Late MIDI message for " << playlen << " samples, " << playlen / 32.f << " ms\n";
+		}
 		if (playlen > 0) {		// if midiMessage with same timeStamp - skip rendering
 			synthEvent.Wait();
 			synth->render(bufpos, playlen);
@@ -446,6 +479,8 @@ int MidiSynth::Init() {
 	wResult = midiIn.Start();
 	if (wResult) return wResult;
 	
+	_beginthread(&WaveOutWin32::waveOutProc, 16384, NULL);
+
 	return 0;
 }
 
