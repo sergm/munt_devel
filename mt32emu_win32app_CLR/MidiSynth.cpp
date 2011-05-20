@@ -172,11 +172,7 @@ public:
 class WaveOutWin32 {
 private:
 	HWAVEOUT	hWaveOut;
-	WAVEHDR		WaveHdr1;
-	WAVEHDR		WaveHdr2;
-	WAVEHDR		WaveHdr3;
-	WAVEHDR		WaveHdr4;
-
+	WAVEHDR		WaveHdr[buffers];
 	HANDLE		hEvent;
 
 public:
@@ -186,37 +182,18 @@ static void waveOutProc(void *) {
 
 		if (midiSynth->IsPendingClose()) break;
 
-		if (waveOut.WaveHdr1.dwFlags & WHDR_DONE) {
-			midiSynth->Render((Bit16s *)waveOut.WaveHdr1.lpData);
-			if (waveOutWrite(waveOut.hWaveOut, &waveOut.WaveHdr1, sizeof(WAVEHDR)) != MMSYSERR_NOERROR) {
-				MessageBox(NULL, L"Failed to write block to device", NULL, MB_OK | MB_ICONEXCLAMATION);
-			}
-		}
-
-		if (waveOut.WaveHdr2.dwFlags & WHDR_DONE) {
-			midiSynth->Render((Bit16s *)waveOut.WaveHdr2.lpData);
-			if (waveOutWrite(waveOut.hWaveOut, &waveOut.WaveHdr2, sizeof(WAVEHDR)) != MMSYSERR_NOERROR) {
-				MessageBox(NULL, L"Failed to write block to device", NULL, MB_OK | MB_ICONEXCLAMATION);
-			}
-		}
-
-		if (waveOut.WaveHdr3.dwFlags & WHDR_DONE) {
-			midiSynth->Render((Bit16s *)waveOut.WaveHdr3.lpData);
-			if (waveOutWrite(waveOut.hWaveOut, &waveOut.WaveHdr3, sizeof(WAVEHDR)) != MMSYSERR_NOERROR) {
-				MessageBox(NULL, L"Failed to write block to device", NULL, MB_OK | MB_ICONEXCLAMATION);
-			}
-		}
-
-		if (waveOut.WaveHdr4.dwFlags & WHDR_DONE) {
-			midiSynth->Render((Bit16s *)waveOut.WaveHdr4.lpData);
-			if (waveOutWrite(waveOut.hWaveOut, &waveOut.WaveHdr4, sizeof(WAVEHDR)) != MMSYSERR_NOERROR) {
-				MessageBox(NULL, L"Failed to write block to device", NULL, MB_OK | MB_ICONEXCLAMATION);
+		for (int i = 0; i < buffers; i++) {
+			if (waveOut.WaveHdr[i].dwFlags & WHDR_DONE) {
+				midiSynth->Render((Bit16s *)waveOut.WaveHdr[i].lpData);
+				if (waveOutWrite(waveOut.hWaveOut, &waveOut.WaveHdr[i], sizeof(WAVEHDR)) != MMSYSERR_NOERROR) {
+					MessageBox(NULL, L"Failed to write block to device", NULL, MB_OK | MB_ICONEXCLAMATION);
+				}
 			}
 		}
 	}
 }
 
-	int Init(Bit16s *stream1, Bit16s *stream2, Bit16s *stream3, Bit16s *stream4, unsigned int len, unsigned int sampleRate) {
+	int Init(Bit16s *stream[], unsigned int len, unsigned int sampleRate) {
 		int wResult;
 		PCMWAVEFORMAT wFormat = {WAVE_FORMAT_PCM, 2, sampleRate, sampleRate * 4, 4, 16};
 
@@ -233,45 +210,17 @@ static void waveOutProc(void *) {
 			return 2;
 		}
 
-		//	Prepare 4 Headers
-		WaveHdr1.lpData = (LPSTR)stream1;
-		WaveHdr1.dwBufferLength = 4 * len;
-		WaveHdr1.dwFlags = 0L;
-		WaveHdr1.dwLoops = 0L;
-		wResult = waveOutPrepareHeader(hWaveOut, &WaveHdr1, sizeof(WAVEHDR));
-		if (wResult != MMSYSERR_NOERROR) {
-			MessageBox(NULL, L"Failed to Prepare Header 1", NULL, MB_OK | MB_ICONEXCLAMATION);
-			return 3;
-		}
-
-		WaveHdr2.lpData = (LPSTR)stream2;
-		WaveHdr2.dwBufferLength = 4 * len;
-		WaveHdr2.dwFlags = 0L;
-		WaveHdr2.dwLoops = 0L;
-		wResult = waveOutPrepareHeader(hWaveOut, &WaveHdr2, sizeof(WAVEHDR));
-		if (wResult != MMSYSERR_NOERROR) {
-			MessageBox(NULL, L"Failed to Prepare Header 2", NULL, MB_OK | MB_ICONEXCLAMATION);
-			return 3;
-		}
-
-		WaveHdr3.lpData = (LPSTR)stream3;
-		WaveHdr3.dwBufferLength = 4 * len;
-		WaveHdr3.dwFlags = 0L;
-		WaveHdr3.dwLoops = 0L;
-		wResult = waveOutPrepareHeader(hWaveOut, &WaveHdr3, sizeof(WAVEHDR));
-		if (wResult != MMSYSERR_NOERROR) {
-			MessageBox(NULL, L"Failed to Prepare Header 3", NULL, MB_OK | MB_ICONEXCLAMATION);
-			return 3;
-		}
-
-		WaveHdr4.lpData = (LPSTR)stream4;
-		WaveHdr4.dwBufferLength = 4 * len;
-		WaveHdr4.dwFlags = 0L;
-		WaveHdr4.dwLoops = 0L;
-		wResult = waveOutPrepareHeader(hWaveOut, &WaveHdr4, sizeof(WAVEHDR));
-		if (wResult != MMSYSERR_NOERROR) {
-			MessageBox(NULL, L"Failed to Prepare Header 4", NULL, MB_OK | MB_ICONEXCLAMATION);
-			return 3;
+		//	Prepare headers
+		for (int i = 0; i < buffers; i++) {
+			WaveHdr[i].lpData = (LPSTR)stream[i];
+			WaveHdr[i].dwBufferLength = 4 * len;
+			WaveHdr[i].dwFlags = 0L;
+			WaveHdr[i].dwLoops = 0L;
+			wResult = waveOutPrepareHeader(hWaveOut, &WaveHdr[i], sizeof(WAVEHDR));
+			if (wResult != MMSYSERR_NOERROR) {
+				MessageBox(NULL, L"Failed to Prepare Header 1", NULL, MB_OK | MB_ICONEXCLAMATION);
+				return 3;
+			}
 		}
 		return 0;
 	}
@@ -285,16 +234,12 @@ static void waveOutProc(void *) {
 			return 8;
 		}
 
-		wResult = waveOutUnprepareHeader(hWaveOut, &WaveHdr1, sizeof(WAVEHDR));
-		if (wResult != MMSYSERR_NOERROR) {
-			MessageBox(NULL, L"Failed to Unprepare Wave Header", NULL, MB_OK | MB_ICONEXCLAMATION);
-			return 8;
-		}
-
-		wResult = waveOutUnprepareHeader(hWaveOut, &WaveHdr2, sizeof(WAVEHDR));
-		if (wResult != MMSYSERR_NOERROR) {
-			MessageBox(NULL, L"Failed to Unprepare Wave Header", NULL, MB_OK | MB_ICONEXCLAMATION);
-			return 8;
+		for (int i = 0; i < buffers; i++) {
+			wResult = waveOutUnprepareHeader(hWaveOut, &WaveHdr[i], sizeof(WAVEHDR));
+			if (wResult != MMSYSERR_NOERROR) {
+				MessageBox(NULL, L"Failed to Unprepare Wave Header", NULL, MB_OK | MB_ICONEXCLAMATION);
+				return 8;
+			}
 		}
 
 		wResult = waveOutClose(hWaveOut);
@@ -308,21 +253,11 @@ static void waveOutProc(void *) {
 	}
 
 	int Start() {
-		if (waveOutWrite(hWaveOut, &WaveHdr1, sizeof(WAVEHDR)) != MMSYSERR_NOERROR) {
-			MessageBox(NULL, L"Failed to write block to device", NULL, MB_OK | MB_ICONEXCLAMATION);
-			return 4;
-		}
-		if (waveOutWrite(hWaveOut, &WaveHdr2, sizeof(WAVEHDR)) != MMSYSERR_NOERROR) {
-			MessageBox(NULL, L"Failed to write block to device", NULL, MB_OK | MB_ICONEXCLAMATION);
-			return 4;
-		}
-		if (waveOutWrite(hWaveOut, &WaveHdr3, sizeof(WAVEHDR)) != MMSYSERR_NOERROR) {
-			MessageBox(NULL, L"Failed to write block to device", NULL, MB_OK | MB_ICONEXCLAMATION);
-			return 4;
-		}
-		if (waveOutWrite(hWaveOut, &WaveHdr4, sizeof(WAVEHDR)) != MMSYSERR_NOERROR) {
-			MessageBox(NULL, L"Failed to write block to device", NULL, MB_OK | MB_ICONEXCLAMATION);
-			return 4;
+		for (int i = 0; i < buffers; i++) {
+			if (waveOutWrite(hWaveOut, &WaveHdr[i], sizeof(WAVEHDR)) != MMSYSERR_NOERROR) {
+				MessageBox(NULL, L"Failed to write block to device", NULL, MB_OK | MB_ICONEXCLAMATION);
+				return 4;
+			}
 		}
 		return 0;
 	}
@@ -417,8 +352,8 @@ void MidiSynth::Render(Bit16s *startpos) {
 MidiSynth::MidiSynth() {
 	midiSynth = this;
 	sampleRate = 32000;
-	latency = 75;
-	len = UINT(sampleRate * latency / 4000.f);
+	latency = 60;
+	len = UINT(sampleRate * latency / 1000.f / buffers);
 	midiDevID = 0;
 	reverbEnabled = true;
 	emuDACInputMode = DACInputMode_GENERATION2;
@@ -428,10 +363,9 @@ MidiSynth::MidiSynth() {
 int MidiSynth::Init() {
 	UINT wResult;
 
-	stream1 = new Bit16s[2 * len];
-	stream2 = new Bit16s[2 * len];
-	stream3 = new Bit16s[2 * len];
-	stream4 = new Bit16s[2 * len];
+	for (int i = 0; i < buffers; i++) {
+		stream[i] = new Bit16s[2 * len];
+	}
 
 	//	Init synth
 	if (synthEvent.Init()) {
@@ -457,17 +391,16 @@ int MidiSynth::Init() {
 	}
 #endif
 
-	wResult = waveOut.Init(stream1, stream2, stream3, stream4, len, sampleRate);
+	wResult = waveOut.Init(stream, len, sampleRate);
 	if (wResult) return wResult;
 
 	wResult = midiIn.Init(midiDevID);
 	if (wResult) return wResult;
 
-	//	Start playing 2 streams
-	synth->render(stream1, len);
-	synth->render(stream2, len);
-	synth->render(stream3, len);
-	synth->render(stream4, len);
+	//	Start playing streams
+	for (int i = 0; i < buffers; i++) {
+		synth->render(stream[i], len);
+	}
 
 	pendingClose = false;
 
@@ -506,7 +439,7 @@ void MidiSynth::SetDACInputMode(DACInputMode pEmuDACInputMode) {
 void MidiSynth::SetParameters(UINT pSampleRate, UINT pMidiDevID, UINT platency) {
 	sampleRate = pSampleRate;
 	latency = platency;
-	len = UINT(latency * sampleRate / 4000.f);
+	len = UINT(latency * sampleRate / 1000.f / buffers);
 	midiDevID = pMidiDevID;
 }
 
@@ -572,8 +505,9 @@ int MidiSynth::Close() {
 
 	// Cleanup memory
 	delete synth;
-	delete stream1;
-	delete stream2;
+	for (int i = 0; i < buffers; i++) {
+		delete stream[i];
+	}
 
 	synthEvent.Close();
 	return 0;

@@ -3,6 +3,8 @@
 #ifndef MT32EMU_MIDISYNTH_H
 #define MT32EMU_MIDISYNTH_H
 
+#define buffers 8
+
 namespace MT32Emu {
 
 class MidiSynth {
@@ -14,10 +16,7 @@ private:
 	bool reverbEnabled;
 	DACInputMode emuDACInputMode;
 
-	Bit16s *stream1;
-	Bit16s *stream2;
-	Bit16s *stream3;
-	Bit16s *stream4;
+	Bit16s *stream[buffers];
 	char *pathToROMfiles;
 
 	bool pendingClose;
