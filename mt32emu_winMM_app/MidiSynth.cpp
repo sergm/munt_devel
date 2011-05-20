@@ -86,24 +86,39 @@ private:
 
 static LRESULT CALLBACK MidiInProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	switch (uMsg) {
-	case WM_APP:
-//		std::cout << "Incoming message! wParam = " << wParam << ", lParam = " << lParam << "\n";
-		midiStream.PutMessage(lParam, midiSynth->GetTimeStamp());
+	case WM_APP: // closing session
+		std::cout << "Session was closed\n";
+			// reset the synth if necessary
 		return 1;
+
 	case WM_COPYDATA:
 //		std::cout << "Incoming data! wParam = " << wParam << "\n";
 		COPYDATASTRUCT *cds;
 		cds = (COPYDATASTRUCT *)lParam;
-/*
-		std::cout << "dwData = " << cds->dwData << ", Data length = " << cds->cbData;
-		unsigned char *s;
-		s = (unsigned char *)cds->lpData;
-		std::cout << ", Data string = " << (UINT)s[0] << ", " << (UINT)s[1] << ", " << (UINT)s[2] << ", " << (UINT)s[3] << "\n";
-*/
-		synthEvent.Wait();
-		midiSynth->PlaySysex((Bit8u*)cds->lpData, cds->cbData);
-		synthEvent.Release();
-		return 1;
+		std::cout << "Instance = " << cds->dwData << ", Data length = " << cds->cbData << "\n";
+		DWORD *data;
+		data = (DWORD *)cds->lpData;
+		std::cout << "Data = " << data[0] << ", " << data[1] << ", " << data[2] << ", " << data[3] << "\n";
+		if (data[0] == 0) {
+			if (data[1] == -1) {
+				// Process handshaking message
+				DWORD inst = (timeGetTime() & 255); // just a random value
+				std::cout << "Instance = " << inst << ", Version = " << data[2] << "\n";
+				std::cout << "Connected application = " << (char *)&data[3] << "\n";
+				return inst;
+			} else if (data[1] == 0) {
+				// Process short MIDI message
+//			std::cout << "Incoming message! msg = " << data[3] << ", timestamp = " << data[2] << "\n";
+				midiStream.PutMessage(data[3], midiSynth->GetTimeStamp());
+				return 1;
+			}
+		} else {
+			// Process Sysex
+			synthEvent.Wait();
+			midiSynth->PlaySysex((Bit8u*)cds->lpData, cds->cbData);
+			synthEvent.Release();
+			return 1;
+		}
 	default:
 		return DefWindowProc(hwnd, uMsg, wParam, lParam);
 	}
@@ -267,6 +282,8 @@ static void waveOutProc(void *) {
 	int Close() {
 		int wResult;
 
+		SetEvent(waveOut.hEvent);
+
 		wResult = waveOutReset(hWaveOut);
 		if (wResult != MMSYSERR_NOERROR) {
 			MessageBox(NULL, L"Failed to Reset WaveOut", NULL, MB_OK | MB_ICONEXCLAMATION);
@@ -405,7 +422,7 @@ void MidiSynth::Render(Bit16s *startpos) {
 MidiSynth::MidiSynth() {
 	midiSynth = this;
 	sampleRate = 32000;
-	latency = 75;
+	latency = 100;
 	len = UINT(sampleRate * latency / 4000.f);
 	midiDevID = 0;
 	reverbEnabled = true;
@@ -549,6 +566,10 @@ int MidiSynth::Close() {
 		mt32emuExtInt = NULL;
 	}
 #endif
+
+	synthEvent.Wait();
+	wResult = waveOut.Pause();
+	if (wResult) return wResult;
 
 	wResult = midiIn.Close();
 	if (wResult) return wResult;
