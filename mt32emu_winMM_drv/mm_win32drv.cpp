@@ -32,6 +32,7 @@ struct Driver {
 		DWORD instance;
 		DWORD flags;
 		DWORD_PTR callback;
+		DWORD synth_instance;
 	} clients[MAX_CLIENTS];
 } drivers[MAX_DRIVERS];
 
@@ -184,7 +185,7 @@ LONG OpenDriver(Driver *driver, UINT uDeviceID, UINT uMsg, DWORD dwUser, DWORD d
 	driver->clients[clientNum].flags = HIWORD(dwParam2);
 	driver->clients[clientNum].callback = desc->dwCallback;
 	driver->clients[clientNum].instance = desc->dwInstance;
-//	*(LONG *)dwUser = clientNum; // no longer needed
+	*(LONG *)dwUser = clientNum;
 	driver->clientCount++;
 	DoCallback(uDeviceID, clientNum, MOM_OPEN, NULL, NULL);
 	return MMSYSERR_NOERROR;
@@ -206,19 +207,23 @@ STDAPI_(LONG) modMessage(UINT uDeviceID, UINT uMsg, DWORD dwUser, DWORD dwParam1
 	switch (uMsg) {
 	case MODM_OPEN:
 		hwnd = FindWindow(L"mt32emu_class", NULL);
+		int inst;
 		if (hwnd == NULL) {
 			MessageBox(NULL, L"Synth application not found!", L"mt32emu_drv", 0);
 			return MMSYSERR_ERROR;
 		} else {
 			DWORD msg[68] = {0, -1, 1}; // 0, handshake indicator, version, capture text of calling window
-			GetWindowTextA(hwnd, (char *)&msg[3], 255);
+			GetModuleFileNameA(GetModuleHandle(NULL), (char *)&msg[3], 255);
 			COPYDATASTRUCT cds = {dwUser, sizeof(msg), msg};
-			*(LONG *)dwUser = SendMessage(hwnd, WM_COPYDATA, NULL, (LPARAM)&cds);
+			inst = SendMessage(hwnd, WM_COPYDATA, NULL, (LPARAM)&cds);
 		}
-		return OpenDriver(driver, uDeviceID, uMsg, dwUser, dwParam1, dwParam2);
+		DWORD res;
+		res = OpenDriver(driver, uDeviceID, uMsg, dwUser, dwParam1, dwParam2);
+		driver->clients[*(DWORD *)dwUser].synth_instance = inst;
+		return res;
 
 	case MODM_CLOSE:
-		SendMessage(hwnd, WM_APP, dwUser, NULL); // end of session message
+		SendMessage(hwnd, WM_APP, driver->clients[dwUser].synth_instance, NULL); // end of session message
 		return CloseDriver(driver, uDeviceID, uMsg, dwUser, dwParam1, dwParam2);
 
 	case MODM_PREPARE:
@@ -240,7 +245,7 @@ STDAPI_(LONG) modMessage(UINT uDeviceID, UINT uMsg, DWORD dwUser, DWORD dwParam1
 			return MMSYSERR_NOERROR;
 		} else {
 			DWORD msg[] = {0, 0, timeGetTime(), dwParam1}; // 0, short MIDI message indicator, time stamp, data
-			COPYDATASTRUCT cds = {dwUser, sizeof(msg), msg};
+			COPYDATASTRUCT cds = {driver->clients[dwUser].synth_instance, sizeof(msg), msg};
 			DWORD res = SendMessage(hwnd, WM_COPYDATA, NULL, (LPARAM)&cds);
 			if (res != 1) {
 				// Synth app was terminated
@@ -262,7 +267,7 @@ STDAPI_(LONG) modMessage(UINT uDeviceID, UINT uMsg, DWORD dwUser, DWORD dwParam1
 			hwnd = FindWindow(L"mt32emu_class", NULL);
 			return MMSYSERR_NOERROR;
 		} else {
-			COPYDATASTRUCT cds = {dwUser, midiHdr->dwBufferLength, midiHdr->lpData};
+			COPYDATASTRUCT cds = {driver->clients[dwUser].synth_instance, midiHdr->dwBufferLength, midiHdr->lpData};
 			DWORD res = SendMessage(hwnd, WM_COPYDATA, NULL, (LPARAM)&cds);
 			if (res != 1) {
 				// Synth app was terminated
