@@ -9,16 +9,14 @@ This win32 application is intended for use with some sort of a MIDI thru driver.
 
 * installing/rebooting do not required, simpler in control, usage and debugging
 
-* possibility to make wave recordings with exact MIDI message timing (It is observed that DirectMusic driver of v. 0.1.3 sometimes introduces minor time shifts in MIDI message playback and I haven’t found any inconsistencies in the sources)
+* possibility to make wave recordings with exact MIDI message timing
 
 * a good example of using mt32synth API, much clearer then in the driver
-
-* DirectMusic is deprecated and Microsoft discourages everyone in future developments. For now, there are difficulties in compiling the driver already.
 
 --
 As an example of a MIDI thru, it is proposed to use MIDI Yoke Junction, from http://www.midiox.com/, currently Version 1.75, 09-23-07.
 
-              
+
 License
 -------
 
@@ -46,4 +44,4 @@ Trademark disclaimer
 Roland is a trademark of Roland Corp. All other brand and product names are
 trademarks or registered trademarks of their respective holder. Use of
 trademarks is for informational purposes only and does not imply endorsement by
-or affiliation with the holder.
+or affiliation with the holder. 
