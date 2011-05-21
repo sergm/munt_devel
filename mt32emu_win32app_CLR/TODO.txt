@@ -1,8 +1,0 @@
-MT32Emu WinMM Application TODO list:
-************************************
-
-* store / load configuration to / from the registry or ini file
-
-* the possibility to do wave recordings
-
-* the possibility to start as a system service
