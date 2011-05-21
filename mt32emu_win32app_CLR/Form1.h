@@ -177,7 +177,7 @@ namespace mt32emu_win32app_CLR {
 			this->nudBufferLatency->Name = L"nudBufferLatency";
 			this->nudBufferLatency->Size = System::Drawing::Size(120, 20);
 			this->nudBufferLatency->TabIndex = 3;
-			this->nudBufferLatency->Value = System::Decimal(gcnew cli::array< System::Int32 >(4) {75, 0, 0, 0});
+			this->nudBufferLatency->Value = System::Decimal(gcnew cli::array< System::Int32 >(4) {60, 0, 0, 0});
 			// 
 			// label1
 			// 
