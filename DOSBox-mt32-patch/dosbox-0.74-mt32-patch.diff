@@ -9,7 +9,7 @@ diff -Nru dosbox-0.74/src/Makefile.am dosbox-0.74-mt32/src/Makefile.am
 +LIBS +=  -lmt32emu
 diff -Nru dosbox-0.74/src/dosbox.cpp dosbox-0.74-mt32/src/dosbox.cpp
 --- dosbox-0.74/src/dosbox.cpp	2010-05-10 17:43:54 +0000
-+++ dosbox-0.74-mt32/src/dosbox.cpp	2011-05-01 03:14:37 +0000
++++ dosbox-0.74-mt32/src/dosbox.cpp	2011-05-24 17:37:35 +0000
 @@ -467,7 +467,7 @@
  	
  	const char* mputypes[] = { "intelligent", "uart", "none",0};
@@ -19,10 +19,15 @@ diff -Nru dosbox-0.74/src/dosbox.cpp dosbox-0.74-mt32/src/dosbox.cpp
  	Pstring = secprop->Add_string("mpu401",Property::Changeable::WhenIdle,"intelligent");
  	Pstring->Set_values(mputypes);
  	Pstring->Set_help("Type of MPU-401 to emulate.");
-@@ -480,6 +480,52 @@
+@@ -480,6 +480,57 @@
  	Pstring->Set_help("Special configuration options for the device driver. This is usually the id of the device you want to use.\n"
  	                  "  See the README/Manual for more details.");
  
++	const char *mt32ReverseStereo[] = {"off", "on",0};
++	Pstring = secprop->Add_string("mt32ReverseStereo",Property::Changeable::WhenIdle,"off");
++	Pstring->Set_values(mt32ReverseStereo);
++	Pstring->Set_help("Reverse stereo channels for MT-32 output");
++
 +	const char *mt32log[] = {"off", "on",0};
 +	Pstring = secprop->Add_string("mt32log",Property::Changeable::WhenIdle,"off");
 +	Pstring->Set_values(mt32log);
@@ -96,8 +101,8 @@ diff -Nru dosbox-0.74/src/gui/midi.cpp dosbox-0.74-mt32/src/gui/midi.cpp
  	Bitu cmd_len;
 diff -Nru dosbox-0.74/src/gui/midi_mt32.h dosbox-0.74-mt32/src/gui/midi_mt32.h
 --- dosbox-0.74/src/gui/midi_mt32.h	1970-01-01 00:00:00 +0000
-+++ dosbox-0.74-mt32/src/gui/midi_mt32.h	2011-05-01 03:12:25 +0000
-@@ -0,0 +1,296 @@
++++ dosbox-0.74-mt32/src/gui/midi_mt32.h	2011-05-24 17:53:18 +0000
+@@ -0,0 +1,322 @@
 +#include "mt32emu.h"
 +#include "mixer.h"
 +#include "control.h"
@@ -108,7 +113,9 @@ diff -Nru dosbox-0.74/src/gui/midi_mt32.h dosbox-0.74-mt32/src/gui/midi_mt32.h
 +
 +using namespace std;   
 +
-+#ifdef MT32MULTICORE
++//#define MT32MULTICORE 1
++
++#if MT32MULTICORE == 2
 +static inline void cpuID(unsigned i, unsigned regs[4]) { 
 +   __asm__ __volatile__
 +   ("cpuid" : "=a" (regs[0]), "=b" (regs[1]), "=c" (regs[2]), "=d" (regs[3]): "a" (i), "c" (0));
@@ -149,7 +156,8 @@ diff -Nru dosbox-0.74/src/gui/midi_mt32.h dosbox-0.74-mt32/src/gui/midi_mt32.h
 +
 +MT32Emu::Synth *_usesynth;
 +MixerChannel *mt32chan = NULL;
-+bool noise = false;
++bool mt32noise = false;
++bool mt32ReverseStereo = false;
 +
 +static struct {
 +#ifdef MT32MULTICORE
@@ -163,6 +171,15 @@ diff -Nru dosbox-0.74/src/gui/midi_mt32.h dosbox-0.74-mt32/src/gui/midi_mt32.h
 +	Bit8u len, play;
 +	Bit8u Temp[MIXER_BUFSIZE], msg[SYSEX_SIZE];
 +} mt32;
++
++void ReverseStereo(Bitu len, Bit16s *buf) {
++	for(Bitu i = 0; i < len; i++) {
++		Bit16s left = *buf;
++		Bit16s right = buf[1];
++		*buf++ = right;
++		*buf++ = left;
++	}
++}
 +
 +#ifdef MT32MULTICORE
 +static int MT32_Thread(void*) {
@@ -203,6 +220,9 @@ diff -Nru dosbox-0.74/src/gui/midi_mt32.h dosbox-0.74-mt32/src/gui/midi_mt32.h
 +
 +			SDL_UnlockMutex(mt32.mutex);
 +			_usesynth->render((Bit16s *)mt32.Temp, len);
++			if (mt32ReverseStereo) {
++				ReverseStereo(len, (Bit16s *)MixTemp);
++			}
 +			mt32chan->AddSamples_s16(len,(Bit16s *)mt32.Temp);
 +			SDL_LockMutex(mt32.mutex);
 +			break;
@@ -225,6 +245,9 @@ diff -Nru dosbox-0.74/src/gui/midi_mt32.h dosbox-0.74-mt32/src/gui/midi_mt32.h
 +    } else {
 +#endif
 +       _usesynth->render((Bit16s *)MixTemp, len);
++			 if (mt32ReverseStereo) {
++					ReverseStereo(len, (Bit16s *)MixTemp);
++			 }
 +       mt32chan->AddSamples_s16(len,(Bit16s *)MixTemp);
 +#ifdef MT32MULTICORE
 +    }
@@ -250,7 +273,7 @@ diff -Nru dosbox-0.74/src/gui/midi_mt32.h dosbox-0.74-mt32/src/gui/midi_mt32.h
 +}
 +
 +void printDebug(void *userData, const char *fmt, va_list list) {
-+	if (noise) {
++	if (mt32noise) {
 +		printf("MT32: ");
 +		vprintf(fmt, list);
 +		printf("\n");
@@ -302,10 +325,16 @@ diff -Nru dosbox-0.74/src/gui/midi_mt32.h dosbox-0.74-mt32/src/gui/midi_mt32.h
 +				_synth->setDACInputMode((MT32Emu::DACInputMode)atoi(section->Get_string("mt32DAC")));
 +			}
 +
-+      if(!strcmp(section->Get_string("mt32log"),"on")) {
-+				noise = true;
++      if(!strcmp(section->Get_string("mt32ReverseStereo"),"on")) {
++				mt32ReverseStereo = true;
 +			} else {
-+				noise = false;
++				mt32ReverseStereo = false;
++			}
++
++      if(!strcmp(section->Get_string("mt32log"),"on")) {
++				mt32noise = true;
++			} else {
++				mt32noise = false;
 +			}
 +
 +			if (mt32chan == NULL)
@@ -314,8 +343,10 @@ diff -Nru dosbox-0.74/src/gui/midi_mt32.h dosbox-0.74-mt32/src/gui/midi_mt32.h
 +      mt32chan->Enable(true);
 +
 +      /* Create MT32 thread */
-+#ifdef MT32MULTICORE
++#if MT32MULTICORE == 2
 +      mt32.multicore=(cpu_check()>1?true:false);
++#endif
++#ifdef MT32MULTICORE
 +      if(mt32.multicore) {
 +          mt32.mutex = SDL_CreateMutex();
 +          mt32.sem = SDL_CreateSemaphore(0);
