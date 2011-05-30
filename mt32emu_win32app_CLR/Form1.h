@@ -163,6 +163,7 @@ namespace mt32emu_win32app_CLR {
 			// nudVolume
 			// 
 			this->nudVolume->Location = System::Drawing::Point(160, 73);
+			this->nudVolume->Maximum = System::Decimal(gcnew cli::array< System::Int32 >(4) {1000, 0, 0, 0});
 			this->nudVolume->Name = L"nudVolume";
 			this->nudVolume->Size = System::Drawing::Size(120, 20);
 			this->nudVolume->TabIndex = 2;
@@ -177,7 +178,7 @@ namespace mt32emu_win32app_CLR {
 			this->nudBufferLatency->Name = L"nudBufferLatency";
 			this->nudBufferLatency->Size = System::Drawing::Size(120, 20);
 			this->nudBufferLatency->TabIndex = 3;
-			this->nudBufferLatency->Value = System::Decimal(gcnew cli::array< System::Int32 >(4) {60, 0, 0, 0});
+			this->nudBufferLatency->Value = System::Decimal(gcnew cli::array< System::Int32 >(4) {70, 0, 0, 0});
 			// 
 			// label1
 			// 
