@@ -6,7 +6,7 @@
 // TODO: reference additional headers your program requires here
 #include <windows.h>
 #include <iostream>
-#include <time.h>
+#include <process.h>
 #include "mt32emu.h"
 
 #if MT32EMU_USE_EXTINT == 1

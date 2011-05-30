@@ -294,7 +294,7 @@ static void waveOutProc(void *) {
 		return 0;
 	}
 
-	int GetPos() {
+	DWORD GetPos() {
 		MMTIME mmTime;
 		mmTime.wType = TIME_SAMPLES;
 
@@ -321,21 +321,20 @@ void MidiSynth::handleReport(ReportType type, const void *reportData) {
 
 void MidiSynth::Render(Bit16s *startpos) {
 	DWORD msg, timeStamp;
-	int buflen = len;
-	int playlen;
+	DWORD buflen = len;
+	DWORD playlen;
 	Bit16s *bufpos = startpos;
 
 	for(;;) {
 		timeStamp = midiStream.PeekMessageTime();
-		if (timeStamp == -1)	// if midiStream is empty - exit
+		if (timeStamp == -1) {	// if midiStream is empty - exit
 			break;
+		}
 
 		//	render samples from playCursor to current midiMessage timeStamp
-		playlen = int(timeStamp - playCursor);
-		if (playlen > buflen)	// if midiMessage is too far - exit
+		playlen = timeStamp - playCursor;
+		if (playlen > buflen) {	// if midiMessage is too far - exit
 			break;
-		if (playlen < 0) {
-			std::cout << "Late MIDI message for " << playlen << " samples, " << playlen / 32.f << " ms\n";
 		}
 		if (playlen > 0) {		// if midiMessage with same timeStamp - skip rendering
 			synthEvent.Wait();
@@ -358,6 +357,9 @@ void MidiSynth::Render(Bit16s *startpos) {
 	synth->render(bufpos, buflen);
 	synthEvent.Release();
 	playCursor += buflen;
+	if (playCursor >= playCursorWrap) {
+		playCursor -= playCursorWrap;
+	}
 #if MT32EMU_USE_EXTINT == 1
 	if (mt32emuExtInt != NULL) {
 		mt32emuExtInt->doControlPanelComm(synth, 4 * len);
@@ -368,8 +370,9 @@ void MidiSynth::Render(Bit16s *startpos) {
 MidiSynth::MidiSynth() {
 	midiSynth = this;
 	sampleRate = 32000;
-	latency = 60;
+	latency = 1000;
 	len = UINT(sampleRate * latency / 1000.f / buffers);
+	playCursorWrap = buffers * len;
 	midiDevID = 0;
 	reverbEnabled = true;
 	emuDACInputMode = DACInputMode_GENERATION2;
@@ -434,12 +437,8 @@ int MidiSynth::Init() {
 }
 
 void MidiSynth::SetMasterVolume(UINT masterVolume) {
-	Bit8u sysex[] = {0x10, 0x00, 0x16, 0x01};
-
-	sysex[3] = (Bit8u)masterVolume;
-	synthEvent.Wait();
-	synth->writeSysex(16, sysex, 4);
-	synthEvent.Release();
+	synth->setOutputGain(masterVolume / 100.0f);
+	synth->setReverbOutputGain(masterVolume / 100.0f);
 }
 
 void MidiSynth::SetReverbEnabled(bool pReverbEnabled) {
@@ -495,7 +494,7 @@ void MidiSynth::PlaySysex(Bit8u *bufpos, DWORD len) {
 }
 
 DWORD MidiSynth::GetTimeStamp() {
-	return waveOut.GetPos();
+	return waveOut.GetPos() % playCursorWrap;
 }
 
 int MidiSynth::Close() {
