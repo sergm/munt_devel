@@ -438,7 +438,7 @@ int MidiSynth::Init() {
 
 void MidiSynth::SetMasterVolume(UINT masterVolume) {
 	synth->setOutputGain(masterVolume / 100.0f);
-	synth->setReverbOutputGain(masterVolume / 100.0f);
+	synth->setReverbOutputGain(masterVolume / 68.0f);
 }
 
 void MidiSynth::SetReverbEnabled(bool pReverbEnabled) {
