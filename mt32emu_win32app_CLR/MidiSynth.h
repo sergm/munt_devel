@@ -36,7 +36,7 @@ private:
 	char *pathToROMfiles;
 
 	bool pendingClose;
-	DWORD playCursor;
+	DWORD playCursor, playCursorWrap;
 
 	Synth *synth;
 

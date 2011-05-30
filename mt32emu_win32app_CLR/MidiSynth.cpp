@@ -370,7 +370,7 @@ void MidiSynth::Render(Bit16s *startpos) {
 MidiSynth::MidiSynth() {
 	midiSynth = this;
 	sampleRate = 32000;
-	latency = 1000;
+	latency = 70;
 	len = UINT(sampleRate * latency / 1000.f / buffers);
 	playCursorWrap = buffers * len;
 	midiDevID = 0;
