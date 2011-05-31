@@ -455,6 +455,7 @@ void MidiSynth::SetParameters(UINT pSampleRate, UINT pMidiDevID, UINT platency) 
 	sampleRate = pSampleRate;
 	latency = platency;
 	len = UINT(latency * sampleRate / 1000.f / buffers);
+	playCursorWrap = buffers * len;
 	midiDevID = pMidiDevID;
 }
 
