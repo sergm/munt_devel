@@ -69,6 +69,8 @@ namespace mt32emu_win32app_CLR {
 	private: System::Windows::Forms::CheckBox^  chbReverbEnabled;
 
 	private: System::Windows::Forms::ComboBox^  cbDACInputMode;
+	private: System::Windows::Forms::CheckBox^  chbShowConsole;
+
 
 	protected: 
 
@@ -103,6 +105,7 @@ namespace mt32emu_win32app_CLR {
 			this->label5 = (gcnew System::Windows::Forms::Label());
 			this->chbReverbEnabled = (gcnew System::Windows::Forms::CheckBox());
 			this->cbDACInputMode = (gcnew System::Windows::Forms::ComboBox());
+			this->chbShowConsole = (gcnew System::Windows::Forms::CheckBox());
 			(cli::safe_cast<System::ComponentModel::ISupportInitialize^  >(this->nudSampleRate))->BeginInit();
 			(cli::safe_cast<System::ComponentModel::ISupportInitialize^  >(this->nudMidiInPort))->BeginInit();
 			(cli::safe_cast<System::ComponentModel::ISupportInitialize^  >(this->nudVolume))->BeginInit();
@@ -230,7 +233,7 @@ namespace mt32emu_win32app_CLR {
 			this->chbReverbEnabled->AutoSize = true;
 			this->chbReverbEnabled->Checked = true;
 			this->chbReverbEnabled->CheckState = System::Windows::Forms::CheckState::Checked;
-			this->chbReverbEnabled->Location = System::Drawing::Point(160, 153);
+			this->chbReverbEnabled->Location = System::Drawing::Point(160, 158);
 			this->chbReverbEnabled->Name = L"chbReverbEnabled";
 			this->chbReverbEnabled->Size = System::Drawing::Size(95, 17);
 			this->chbReverbEnabled->TabIndex = 5;
@@ -250,6 +253,17 @@ namespace mt32emu_win32app_CLR {
 			this->cbDACInputMode->TabIndex = 4;
 			this->cbDACInputMode->SelectedIndexChanged += gcnew System::EventHandler(this, &Form1::cbDACInputMode_SelectedIndexChanged);
 			// 
+			// chbShowConsole
+			// 
+			this->chbShowConsole->AutoSize = true;
+			this->chbShowConsole->Location = System::Drawing::Point(28, 158);
+			this->chbShowConsole->Name = L"chbShowConsole";
+			this->chbShowConsole->Size = System::Drawing::Size(94, 17);
+			this->chbShowConsole->TabIndex = 5;
+			this->chbShowConsole->Text = L"Show Console";
+			this->chbShowConsole->UseVisualStyleBackColor = true;
+			this->chbShowConsole->CheckedChanged += gcnew System::EventHandler(this, &Form1::chbShowConsole_CheckedChanged);
+			// 
 			// Form1
 			// 
 			this->AcceptButton = this->bApply;
@@ -258,6 +272,7 @@ namespace mt32emu_win32app_CLR {
 			this->CancelButton = this->bClose;
 			this->ClientSize = System::Drawing::Size(292, 227);
 			this->Controls->Add(this->cbDACInputMode);
+			this->Controls->Add(this->chbShowConsole);
 			this->Controls->Add(this->chbReverbEnabled);
 			this->Controls->Add(this->label5);
 			this->Controls->Add(this->label4);
@@ -302,7 +317,15 @@ private: System::Void chbReverbEnabled_CheckedChanged(System::Object^  sender, S
 			midiSynth.SetReverbEnabled(chbReverbEnabled->Checked);
 		 }
 private: System::Void cbDACInputMode_SelectedIndexChanged(System::Object^  sender, System::EventArgs^  e) {
-			 midiSynth.SetDACInputMode((MT32Emu::DACInputMode)cbDACInputMode->SelectedIndex);
+			midiSynth.SetDACInputMode((MT32Emu::DACInputMode)cbDACInputMode->SelectedIndex);
+		 }
+private: System::Void chbShowConsole_CheckedChanged(System::Object^  sender, System::EventArgs^  e) {
+			HWND h = GetConsoleWindow();
+			if (chbShowConsole->Checked) {
+				ShowWindow(h, SW_RESTORE);
+			} else {
+				ShowWindow(h, SW_HIDE);
+			}
 		 }
 };
 }

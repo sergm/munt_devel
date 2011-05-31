@@ -2,7 +2,7 @@
 <VisualStudioProject
 	ProjectType="Visual C++"
 	Version="9,00"
-	Name="mt32emu_win32app_CLR"
+	Name="mt32emu_win32app"
 	ProjectGUID="{16E05969-A290-467A-B891-6647A748AF5F}"
 	RootNamespace="mt32emu_win32app_CLR"
 	Keyword="ManagedCProj"
@@ -65,7 +65,7 @@
 				AdditionalLibraryDirectories="&quot;..\mt32emu\$(ConfigurationName)&quot;;..\SDL\lib"
 				GenerateDebugInformation="true"
 				AssemblyDebug="1"
-				SubSystem="2"
+				SubSystem="1"
 				EntryPointSymbol=""
 				TargetMachine="1"
 			/>
@@ -136,10 +136,11 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalDependencies="mt32emu.lib SDL_net.lib user32.lib winmm.lib $(NOINHERIT)"
+				OutputFile="$(OutDir)\mt32emu.exe"
 				LinkIncremental="1"
 				AdditionalLibraryDirectories="&quot;..\mt32emu\$(ConfigurationName)&quot;;..\SDL\lib"
 				GenerateDebugInformation="true"
-				SubSystem="2"
+				SubSystem="1"
 				EntryPointSymbol=""
 				TargetMachine="1"
 			/>
