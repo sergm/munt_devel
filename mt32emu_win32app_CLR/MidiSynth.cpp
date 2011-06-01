@@ -20,6 +20,9 @@ namespace MT32Emu {
 
 MidiSynth *midiSynth;
 
+//#define	RENDER_EVERY_MS 1 // provides minimum possible latency
+#define	MIN_RENDER_SAMPLES 320 // render at least this number of samples
+
 class MidiStream {
 private:
 	static const unsigned int maxPos = 1024;
@@ -188,55 +191,29 @@ public:
 class WaveOutWin32 {
 private:
 	HWAVEOUT	hWaveOut;
-	WAVEHDR		WaveHdr[buffers];
-	HANDLE		hEvent;
+	WAVEHDR		WaveHdr;
 
 public:
-static void waveOutProc(void *) {
-	for (;;) {
-		WaitForSingleObject(waveOut.hEvent, INFINITE);
-
-		if (midiSynth->IsPendingClose()) break;
-
-		for (int i = 0; i < buffers; i++) {
-			if (waveOut.WaveHdr[i].dwFlags & WHDR_DONE) {
-				midiSynth->Render((Bit16s *)waveOut.WaveHdr[i].lpData);
-				if (waveOutWrite(waveOut.hWaveOut, &waveOut.WaveHdr[i], sizeof(WAVEHDR)) != MMSYSERR_NOERROR) {
-					MessageBox(NULL, L"Failed to write block to device", NULL, MB_OK | MB_ICONEXCLAMATION);
-				}
-			}
-		}
-	}
-}
-
-	int Init(Bit16s *stream[], unsigned int len, unsigned int sampleRate) {
+	int Init(Bit16s *stream, unsigned int len, unsigned int sampleRate) {
 		int wResult;
 		PCMWAVEFORMAT wFormat = {WAVE_FORMAT_PCM, 2, sampleRate, sampleRate * 4, 4, 16};
 
-		hEvent = CreateEvent(NULL, false, true, NULL);
-		if (hEvent == NULL) {
-			MessageBox(NULL, L"Can't create waveOut sync object", NULL, MB_OK | MB_ICONEXCLAMATION);
-			return 1;
-		}
-
 		//	Open waveout device
-		wResult = waveOutOpen(&hWaveOut, WAVE_MAPPER, (LPWAVEFORMATEX)&wFormat, (DWORD_PTR)hEvent, (DWORD_PTR)&midiSynth, CALLBACK_EVENT);
+		wResult = waveOutOpen(&hWaveOut, WAVE_MAPPER, (LPWAVEFORMATEX)&wFormat, NULL, (DWORD_PTR)&midiSynth, CALLBACK_NULL);
 		if (wResult != MMSYSERR_NOERROR) {
 			MessageBox(NULL, L"Failed to open waveform output device.", NULL, MB_OK | MB_ICONEXCLAMATION);
 			return 2;
 		}
 
-		//	Prepare headers
-		for (int i = 0; i < buffers; i++) {
-			WaveHdr[i].lpData = (LPSTR)stream[i];
-			WaveHdr[i].dwBufferLength = 4 * len;
-			WaveHdr[i].dwFlags = 0L;
-			WaveHdr[i].dwLoops = 0L;
-			wResult = waveOutPrepareHeader(hWaveOut, &WaveHdr[i], sizeof(WAVEHDR));
-			if (wResult != MMSYSERR_NOERROR) {
-				MessageBox(NULL, L"Failed to Prepare Header 1", NULL, MB_OK | MB_ICONEXCLAMATION);
-				return 3;
-			}
+		//	Prepare header
+		WaveHdr.dwBufferLength = 4 * len;
+		WaveHdr.lpData = (LPSTR)stream;
+		WaveHdr.dwFlags = WHDR_BEGINLOOP | WHDR_ENDLOOP;
+		WaveHdr.dwLoops = -1;
+		wResult = waveOutPrepareHeader(hWaveOut, &WaveHdr, sizeof(WAVEHDR));
+		if (wResult != MMSYSERR_NOERROR) {
+			MessageBox(NULL, L"Failed to Prepare Header 1", NULL, MB_OK | MB_ICONEXCLAMATION);
+			return 3;
 		}
 		return 0;
 	}
@@ -250,12 +227,10 @@ static void waveOutProc(void *) {
 			return 8;
 		}
 
-		for (int i = 0; i < buffers; i++) {
-			wResult = waveOutUnprepareHeader(hWaveOut, &WaveHdr[i], sizeof(WAVEHDR));
-			if (wResult != MMSYSERR_NOERROR) {
-				MessageBox(NULL, L"Failed to Unprepare Wave Header", NULL, MB_OK | MB_ICONEXCLAMATION);
-				return 8;
-			}
+		wResult = waveOutUnprepareHeader(hWaveOut, &WaveHdr, sizeof(WAVEHDR));
+		if (wResult != MMSYSERR_NOERROR) {
+			MessageBox(NULL, L"Failed to Unprepare Wave Header", NULL, MB_OK | MB_ICONEXCLAMATION);
+			return 8;
 		}
 
 		wResult = waveOutClose(hWaveOut);
@@ -263,17 +238,13 @@ static void waveOutProc(void *) {
 			MessageBox(NULL, L"Failed to Close WaveOut", NULL, MB_OK | MB_ICONEXCLAMATION);
 			return 8;
 		}
-
-		CloseHandle(hEvent);
 		return 0;
 	}
 
 	int Start() {
-		for (int i = 0; i < buffers; i++) {
-			if (waveOutWrite(hWaveOut, &WaveHdr[i], sizeof(WAVEHDR)) != MMSYSERR_NOERROR) {
-				MessageBox(NULL, L"Failed to write block to device", NULL, MB_OK | MB_ICONEXCLAMATION);
-				return 4;
-			}
+		if (waveOutWrite(hWaveOut, &WaveHdr, sizeof(WAVEHDR)) != MMSYSERR_NOERROR) {
+			MessageBox(NULL, L"Failed to write block to device", NULL, MB_OK | MB_ICONEXCLAMATION);
+			return 4;
 		}
 		return 0;
 	}
@@ -319,60 +290,84 @@ void MidiSynth::handleReport(ReportType type, const void *reportData) {
 #endif
 }
 
-void MidiSynth::Render(Bit16s *startpos) {
+void render(void *) {
+	midiSynth->Render();
+}
+
+void MidiSynth::Render() {
 	DWORD msg, timeStamp;
-	DWORD buflen = len;
 	DWORD playlen;
-	Bit16s *bufpos = startpos;
+	Bit16s *bufpos;
+	DWORD buflen;
 
-	for(;;) {
-		timeStamp = midiStream.PeekMessageTime();
-		if (timeStamp == -1) {	// if midiStream is empty - exit
-			break;
-		}
+	while (!pendingClose) {
+		bufpos = stream + 2 * playCursor;
+		timeStamp = GetTimeStamp();
+		if (timeStamp > playCursor) {
+			buflen = timeStamp - playCursor;
 
-		//	render samples from playCursor to current midiMessage timeStamp
-		playlen = timeStamp - playCursor;
-		if (playlen > buflen) {	// if midiMessage is too far - exit
-			break;
-		}
-		if (playlen > 0) {		// if midiMessage with same timeStamp - skip rendering
-			synthEvent.Wait();
-			synth->render(bufpos, playlen);
-			synthEvent.Release();
-			playCursor += playlen;
-			bufpos += 2 * playlen;
-			buflen -= playlen;
-		}
-
-		// play midiMessage
-		msg = midiStream.GetMessage();
-		synthEvent.Wait();
-		synth->playMsg(msg);
-		synthEvent.Release();
-	}
-
-	//	render rest of samples
-	synthEvent.Wait();
-	synth->render(bufpos, buflen);
-	synthEvent.Release();
-	playCursor += buflen;
-	if (playCursor >= playCursorWrap) {
-		playCursor -= playCursorWrap;
-	}
-#if MT32EMU_USE_EXTINT == 1
-	if (mt32emuExtInt != NULL) {
-		mt32emuExtInt->doControlPanelComm(synth, 4 * len);
-	}
+#ifdef RENDER_EVERY_MS
+			if (buflen < 64) {
+				Sleep(1);
+			}
+#else
+			if (buflen < MIN_RENDER_SAMPLES) {
+				Sleep(DWORD((MIN_RENDER_SAMPLES - buflen) * 0.028f));
+			}
 #endif
+
+		} else {
+			buflen = len - playCursor;
+		}
+
+		for(;;) {
+			timeStamp = midiStream.PeekMessageTime();
+			if (timeStamp == -1) {	// if midiStream is empty - exit
+				break;
+			}
+
+			//	render samples from playCursor to current midiMessage timeStamp
+			playlen = timeStamp - playCursor;
+			if (playlen > buflen) {	// if midiMessage is too far - exit
+				break;
+			}
+			if (playlen > 0) {		// if midiMessage with same timeStamp - skip rendering
+				synthEvent.Wait();
+				synth->render(bufpos, playlen);
+				synthEvent.Release();
+				playCursor += playlen;
+				bufpos += 2 * playlen;
+				buflen -= playlen;
+			}
+
+			// play midiMessage
+			msg = midiStream.GetMessage();
+			synthEvent.Wait();
+			synth->playMsg(msg);
+			synthEvent.Release();
+		}
+
+		//	render rest of samples
+		synthEvent.Wait();
+		synth->render(bufpos, buflen);
+		synthEvent.Release();
+		playCursor += buflen;
+		if (playCursor >= len) {
+			playCursor -= len;
+		}
+#if MT32EMU_USE_EXTINT == 1
+		if (mt32emuExtInt != NULL) {
+			mt32emuExtInt->doControlPanelComm(synth, 4 * len);
+		}
+#endif
+	}
 }
 
 MidiSynth::MidiSynth() {
 	midiSynth = this;
 	sampleRate = 32000;
-	latency = 70;
-	len = UINT(sampleRate * latency / 1000.f / buffers);
-	playCursorWrap = buffers * len;
+	latency = 50;
+	len = UINT(sampleRate * latency / 1000.f);
 	midiDevID = 0;
 	reverbEnabled = true;
 	emuDACInputMode = DACInputMode_GENERATION2;
@@ -382,9 +377,7 @@ MidiSynth::MidiSynth() {
 int MidiSynth::Init() {
 	UINT wResult;
 
-	for (int i = 0; i < buffers; i++) {
-		stream[i] = new Bit16s[2 * len];
-	}
+	stream = new Bit16s[2 * len];
 
 	//	Init synth
 	if (synthEvent.Init()) {
@@ -417,9 +410,7 @@ int MidiSynth::Init() {
 	if (wResult) return wResult;
 
 	//	Start playing streams
-	for (int i = 0; i < buffers; i++) {
-		synth->render(stream[i], len);
-	}
+	synth->render(stream, len);
 
 	pendingClose = false;
 
@@ -431,7 +422,7 @@ int MidiSynth::Init() {
 	wResult = midiIn.Start();
 	if (wResult) return wResult;
 	
-	_beginthread(&WaveOutWin32::waveOutProc, 16384, NULL);
+	_beginthread(&render, 16384, NULL);
 
 	return 0;
 }
@@ -454,8 +445,7 @@ void MidiSynth::SetDACInputMode(DACInputMode pEmuDACInputMode) {
 void MidiSynth::SetParameters(UINT pSampleRate, UINT pMidiDevID, UINT platency) {
 	sampleRate = pSampleRate;
 	latency = platency;
-	len = UINT(latency * sampleRate / 1000.f / buffers);
-	playCursorWrap = buffers * len;
+	len = UINT(latency * sampleRate / 1000.f);
 	midiDevID = pMidiDevID;
 }
 
@@ -495,7 +485,7 @@ void MidiSynth::PlaySysex(Bit8u *bufpos, DWORD len) {
 }
 
 DWORD MidiSynth::GetTimeStamp() {
-	return waveOut.GetPos() % playCursorWrap;
+	return waveOut.GetPos() % len;
 }
 
 int MidiSynth::Close() {
@@ -511,6 +501,8 @@ int MidiSynth::Close() {
 	}
 #endif
 
+	waveOut.Pause();
+
 	wResult = midiIn.Close();
 	if (wResult) return wResult;
 
@@ -521,9 +513,7 @@ int MidiSynth::Close() {
 
 	// Cleanup memory
 	delete synth;
-	for (int i = 0; i < buffers; i++) {
-		delete stream[i];
-	}
+	delete stream;
 
 	synthEvent.Close();
 	return 0;

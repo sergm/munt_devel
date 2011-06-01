@@ -176,12 +176,12 @@ namespace mt32emu_win32app_CLR {
 			// nudBufferLatency
 			// 
 			this->nudBufferLatency->Location = System::Drawing::Point(160, 99);
-			this->nudBufferLatency->Maximum = System::Decimal(gcnew cli::array< System::Int32 >(4) {1000, 0, 0, 0});
-			this->nudBufferLatency->Minimum = System::Decimal(gcnew cli::array< System::Int32 >(4) {40, 0, 0, 0});
+			this->nudBufferLatency->Maximum = System::Decimal(gcnew cli::array< System::Int32 >(4) {10000, 0, 0, 0});
+			this->nudBufferLatency->Minimum = System::Decimal(gcnew cli::array< System::Int32 >(4) {0, 0, 0, 0});
 			this->nudBufferLatency->Name = L"nudBufferLatency";
 			this->nudBufferLatency->Size = System::Drawing::Size(120, 20);
 			this->nudBufferLatency->TabIndex = 3;
-			this->nudBufferLatency->Value = System::Decimal(gcnew cli::array< System::Int32 >(4) {70, 0, 0, 0});
+			this->nudBufferLatency->Value = System::Decimal(gcnew cli::array< System::Int32 >(4) {50, 0, 0, 0});
 			// 
 			// label1
 			// 
