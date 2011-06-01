@@ -15,13 +15,18 @@ int wmain()
 int main(array<System::String ^> ^args)
 #endif
 {
-	ShowWindow(GetConsoleWindow(), SW_HIDE);
-
 	// Enabling Windows XP visual effects before any controls are created
 	Application::EnableVisualStyles();
 	Application::SetCompatibleTextRenderingDefault(false); 
 
-	midiSynth.Init();
+	DWORD res = midiSynth.Init();
+	if (res) {
+		char str[80];
+		wsprintfA(str, "Error %d during initialization", res);
+		MessageBoxA(NULL, str, NULL, MB_OK | MB_ICONEXCLAMATION);
+		return res;
+	}
+	ShowWindow(GetConsoleWindow(), SW_HIDE);
 
 	// Create the main window and run it
 	Application::Run(gcnew Form1());
