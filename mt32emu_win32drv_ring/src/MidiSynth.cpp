@@ -20,7 +20,7 @@ namespace MT32Emu {
 
 MidiSynth *midiSynth;
 
-//#define	RENDER_EVERY_MS 1 // provides minimum possible latency
+#define	RENDER_EVERY_MS 1 // provides minimum possible latency
 #define	MIN_RENDER_SAMPLES 320 // render at least this number of samples
 
 class MidiStream {
@@ -238,10 +238,12 @@ void MidiSynth::Render() {
 #ifdef RENDER_EVERY_MS
 			if (buflen < 64) {
 				Sleep(1);
+				continue;
 			}
 #else
 			if (buflen < MIN_RENDER_SAMPLES) {
 				Sleep(DWORD((MIN_RENDER_SAMPLES - buflen) * 0.028f));
+				continue;
 			}
 #endif
 
