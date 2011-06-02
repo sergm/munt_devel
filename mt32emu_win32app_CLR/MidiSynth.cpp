@@ -511,6 +511,7 @@ int MidiSynth::Close() {
 	wResult = waveOut.Close();
 	if (wResult) return wResult;
 
+	synthEvent.Wait();
 	synth->close();
 
 	// Cleanup memory
