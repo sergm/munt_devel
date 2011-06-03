@@ -22,6 +22,7 @@ MidiSynth *midiSynth;
 
 #define	RENDER_EVERY_MS 1 // provides minimum possible latency
 #define	MIN_RENDER_SAMPLES 320 // render at least this number of samples
+#define	SAFE_RENDER_SAMPLES 320	// render up to this safe point
 
 class MidiStream {
 private:
@@ -225,7 +226,6 @@ void render(void *) {
 
 void MidiSynth::Render() {
 	DWORD msg, timeStamp;
-	DWORD playlen;
 	Bit16s *bufpos;
 	DWORD buflen;
 
@@ -241,14 +241,19 @@ void MidiSynth::Render() {
 				continue;
 			}
 #else
-			if (buflen < MIN_RENDER_SAMPLES) {
-				Sleep(DWORD((MIN_RENDER_SAMPLES - buflen) * 0.028f));
+			if (buflen < SAFE_RENDER_SAMPLES + MIN_RENDER_SAMPLES) {
+				Sleep(DWORD((SAFE_RENDER_SAMPLES + MIN_RENDER_SAMPLES - buflen) * 0.028f));
 				continue;
+			} else {
+				buflen -= SAFE_RENDER_SAMPLES;
 			}
 #endif
 
 		} else {
 			buflen = len - playCursor;
+			if (timeStamp < SAFE_RENDER_SAMPLES) {
+				Sleep(DWORD(SAFE_RENDER_SAMPLES * 0.028f));
+			}
 		}
 
 		for(;;) {
@@ -257,8 +262,9 @@ void MidiSynth::Render() {
 				break;
 			}
 
+#ifndef RENDER_EVERY_MS
 			//	render samples from playCursor to current midiMessage timeStamp
-			playlen = timeStamp - playCursor;
+			DWORD playlen = timeStamp - playCursor;
 			if (playlen > buflen) {	// if midiMessage is too far - exit
 				break;
 			}
@@ -270,6 +276,7 @@ void MidiSynth::Render() {
 				bufpos += 2 * playlen;
 				buflen -= playlen;
 			}
+#endif
 
 			// play midiMessage
 			msg = midiStream.GetMessage();
@@ -416,15 +423,6 @@ int MidiSynth::Init() {
 	return 0;
 }
 
-void MidiSynth::SetMasterVolume(UINT masterVolume) {
-	Bit8u sysex[] = {0x10, 0x00, 0x16, 0x01};
-
-	sysex[3] = (Bit8u)masterVolume;
-	synthEvent.Wait();
-	synth->writeSysex(16, sysex, 4);
-	synthEvent.Release();
-}
-
 int MidiSynth::Reset() {
 	UINT wResult;
 
@@ -462,7 +460,11 @@ bool MidiSynth::IsPendingClose() {
 }
 
 void MidiSynth::PushMIDI(DWORD msg) {
+#ifndef RENDER_EVERY_MS
 	midiStream.PutMessage(msg, waveOut.GetPos() % len);
+#else
+	midiStream.PutMessage(msg, 0);
+#endif
 }
 
 void MidiSynth::PlaySysex(Bit8u *bufpos, DWORD len) {
