@@ -20,6 +20,7 @@ namespace MT32Emu {
 
 MidiSynth *midiSynth;
 
+//#define	DRIVER_MODE
 #define	RENDER_EVERY_MS 1				// provides minimum possible latency
 #define	MIN_RENDER_SAMPLES 320	// render at least this number of samples
 #define	SAFE_RENDER_SAMPLES 320	// render up to this safe point
@@ -100,99 +101,6 @@ public:
 		SetEvent(hEvent);
 	}
 } synthEvent;
-
-class MidiInWin32 {
-private:
-	HMIDIIN hMidiIn;
-	MIDIHDR MidiInHdr;
-	Bit8u sysexbuf[4096];
-
-static void CALLBACK MidiInProc(HMIDIIN hMidiIn, UINT wMsg, DWORD_PTR dwInstance, DWORD_PTR dwParam1, DWORD_PTR dwParam2) {
-	if (midiSynth->IsPendingClose())
-		return;
-
-	LPMIDIHDR pMIDIhdr = (LPMIDIHDR)dwParam1;
-	if (wMsg == MIM_LONGDATA) {
-		synthEvent.Wait();
-		midiSynth->PlaySysex((Bit8u*)pMIDIhdr->lpData, pMIDIhdr->dwBytesRecorded);
-		synthEvent.Release();
-		std::cout << "Play SysEx message " << pMIDIhdr->dwBytesRecorded << " bytes\n";
-
-		//	Add SysEx Buffer for reuse
-		if (midiInAddBuffer(hMidiIn, pMIDIhdr, sizeof(MIDIHDR)) != MMSYSERR_NOERROR) {
-			MessageBox(NULL, L"Failed to add SysEx Buffer", NULL, MB_OK | MB_ICONEXCLAMATION);
-			return;
-		}
-		return;
-	}
-	if (wMsg != MIM_DATA)
-		return;
-
-#ifndef RENDER_EVERY_MS
-	midiStream.PutMessage(dwParam1, midiSynth->GetTimeStamp());
-#else
-	midiStream.PutMessage(dwParam1, 0);
-#endif
-}
-
-public:
-	int Init(unsigned int midiDevID) {
-		int wResult;
-
-		//	Init midiIn port
-		wResult = midiInOpen(&hMidiIn, midiDevID, (DWORD_PTR)MidiInProc, (DWORD_PTR)&midiSynth, CALLBACK_FUNCTION);
-		if (wResult != MMSYSERR_NOERROR) {
-			MessageBox(NULL, L"Failed to open midi input device", NULL, MB_OK | MB_ICONEXCLAMATION);
-			return 5;
-		}
-
-		//	Prepare SysEx midiIn buffer
-		MidiInHdr.lpData = (LPSTR)sysexbuf;
-		MidiInHdr.dwBufferLength = 4096;
-		MidiInHdr.dwFlags = 0L;
-		wResult = midiInPrepareHeader(hMidiIn, &MidiInHdr, sizeof(MIDIHDR));
-		if (wResult != MMSYSERR_NOERROR) {
-			MessageBox(NULL, L"Failed to Prepare midi buffer Header", NULL, MB_OK | MB_ICONEXCLAMATION);
-			return 6;
-		}
-
-		//	Add SysEx Buffer
-		wResult = midiInAddBuffer(hMidiIn, &MidiInHdr, sizeof(MIDIHDR));
-		if (wResult != MMSYSERR_NOERROR) {
-			MessageBox(NULL, L"Failed to add SysEx Buffer", NULL, MB_OK | MB_ICONEXCLAMATION);
-			return 7;
-		}
-		return 0;
-	}
-
-	int Close() {
-		int wResult;
-
-		wResult = midiInReset(hMidiIn);
-		if (wResult != MMSYSERR_NOERROR) {
-			MessageBox(NULL, L"Failed to Reset MidiIn port", NULL, MB_OK | MB_ICONEXCLAMATION);
-			return 8;
-		}
-
-		wResult = midiInUnprepareHeader(hMidiIn, &MidiInHdr, sizeof(MIDIHDR));
-		if (wResult != MMSYSERR_NOERROR) {
-			MessageBox(NULL, L"Failed to Unprepare Midi Header", NULL, MB_OK | MB_ICONEXCLAMATION);
-			return 8;
-		}
-
-		wResult = midiInClose(hMidiIn);
-		if (wResult != MMSYSERR_NOERROR) {
-			MessageBox(NULL, L"Failed to Close MidiIn port", NULL, MB_OK | MB_ICONEXCLAMATION);
-			return 8;
-		}
-
-		return 0;
-	}
-
-	int Start() {
-		return midiInStart(hMidiIn);
-	}
-} midiIn;
 
 class WaveOutWin32 {
 private:
@@ -283,10 +191,31 @@ public:
 	}
 } waveOut;
 
+#ifdef DRIVER_MODE
+void printDebug(void *userData, const char *fmt, va_list list) {
+}
+#else
+#define printDebug NULL
+#endif
+
 int MT32_Report(void *userData, ReportType type, const void *reportData) {
 #if MT32EMU_USE_EXTINT == 1
 	midiSynth->handleReport(type, reportData);
 #endif
+	switch(type) {
+	case MT32Emu::ReportType_errorControlROM:
+		std::cout << "MT32: Couldn't find Control ROM file\n";
+		break;
+	case MT32Emu::ReportType_errorPCMROM:
+		std::cout << "MT32: Couldn't open PCM ROM file\n";
+		break;
+	case MT32Emu::ReportType_lcdMessage:
+		std::cout << "MT32: LCD-Message: " << (char *)reportData << "\n";
+		break;
+	default:
+		//LOG(LOG_ALL,LOG_NORMAL)("MT32: Report %d",type);
+		break;
+	}
 	return 0;
 }
 
@@ -307,7 +236,7 @@ void MidiSynth::Render() {
 
 	while (!pendingClose) {
 		bufpos = stream + 2 * playCursor;
-		timeStamp = GetTimeStamp();
+		timeStamp = waveOut.GetPos() % len;
 		if (timeStamp > playCursor) {
 			buflen = timeStamp - playCursor;
 
@@ -381,17 +310,121 @@ void MidiSynth::Render() {
 
 MidiSynth::MidiSynth() {
 	midiSynth = this;
-	sampleRate = 32000;
-	latency = 50;
+}
+
+int LoadIntValue(char *key, int nDefault) {
+	return GetPrivateProfileIntA("mt32emu", key, nDefault, "mt32emu.ini");
+}
+
+DWORD LoadStringValue(char *key, char *nDefault, char *destination, DWORD nSize) {
+	return GetPrivateProfileStringA("mt32emu", key, nDefault, destination, nSize, "mt32emu.ini");
+}
+
+void MidiSynth::LoadSettings() {
+	sampleRate = LoadIntValue("SampleRate", 32000);
+	latency = LoadIntValue("Latency", 50);
 	len = UINT(sampleRate * latency / 1000.f);
-	midiDevID = 0;
+	ReloadSettings();
+}
+
+void MidiSynth::ReloadSettings() {
+	resetEnabled = true;
+	if (LoadIntValue("ResetEnabled", 1) == 0) {
+		resetEnabled = false;
+	}
+
 	reverbEnabled = true;
-	emuDACInputMode = DACInputMode_GENERATION2;
-	pathToROMfiles = "C:/WINDOWS/SYSTEM32/";
+	if (LoadIntValue("ReverbEnabled", 1) == 0) {
+		reverbEnabled = false;
+	}
+
+	reverbOverridden = true;
+	if (LoadIntValue("ReverbOverridden", 0) == 0) {
+		reverbOverridden = false;
+	}
+
+	reverbMode = LoadIntValue("ReverbMode", 0);
+	reverbTime = LoadIntValue("ReverbTime", 5);
+	reverbLevel = LoadIntValue("ReverbLevel", 3);
+
+	outputGain = (float)LoadIntValue("OutputGain", 100);
+	if (outputGain < 0.0f) {
+		outputGain = -outputGain;
+	}
+	if (outputGain > 1000.0f) {
+		outputGain = 1000.0f;
+	}
+
+	reverbOutputGain = (float)LoadIntValue("ReverbOutputGain", 100);
+	if (reverbOutputGain < 0.0f) {
+		reverbOutputGain = -reverbOutputGain;
+	}
+	if (reverbOutputGain > 1000.0f) {
+		reverbOutputGain = 1000.0f;
+	}
+
+	emuDACInputMode = (DACInputMode)LoadIntValue("DACInputMode", DACInputMode_GENERATION2);
+
+	DWORD s = LoadStringValue("PathToROMFiles", "C:/WINDOWS/SYSTEM32/", pathToROMfiles, 254);
+	pathToROMfiles[s] = '/';
+	pathToROMfiles[s + 1] = 0;
+}
+
+void MidiSynth::ApplySettings() {
+	synth->setReverbEnabled(reverbEnabled);
+	synth->setDACInputMode(emuDACInputMode);
+	synth->setOutputGain(outputGain / 100.0f);
+	synth->setReverbOutputGain(reverbOutputGain / 147.0f);
+	if (reverbOverridden) {
+		Bit8u sysex[] = {0x10, 0x00, 0x01, reverbMode, reverbTime, reverbLevel};
+		synth->setReverbOverridden(false);
+		synth->writeSysex(16, sysex, 6);
+		synth->setReverbOverridden(true);
+	}
+}
+
+void MidiSynth::StoreSettings(
+	int newSampleRate,
+	int newLatency,
+	bool newReverbEnabled,
+	bool newReverbOverridden,
+	int newReverbMode,
+	int newReverbTime,
+	int newReverbLevel,
+	int newOutputGain,
+	int newReverbGain,
+	int newDACInputMode) {
+
+	reverbEnabled = newReverbEnabled;
+	synth->setReverbEnabled(reverbEnabled);
+
+	outputGain = (float)newOutputGain;
+	synth->setOutputGain(outputGain / 100.0f);
+
+	reverbOutputGain = (float)newReverbGain;
+	synth->setReverbOutputGain(reverbOutputGain / 147.0f);
+
+	emuDACInputMode = (DACInputMode)newDACInputMode;
+	synth->setDACInputMode(emuDACInputMode);
+
+	reverbMode = newReverbMode;
+	reverbTime = newReverbTime;
+	reverbLevel = newReverbLevel;
+	reverbOverridden = newReverbOverridden;
+	if (reverbOverridden) {
+		synthEvent.Wait();
+		Bit8u sysex[] = {0x10, 0x00, 0x01, reverbMode, reverbTime, reverbLevel};
+		synth->setReverbOverridden(false);
+		synth->writeSysex(16, sysex, 6);
+		synth->setReverbOverridden(true);
+		synthEvent.Release();
+	}
 }
 
 int MidiSynth::Init() {
 	UINT wResult;
+
+	LoadSettings();
 
 	stream = new Bit16s[2 * len];
 
@@ -401,13 +434,13 @@ int MidiSynth::Init() {
 	}
 	synth = new Synth();
 	SynthProperties synthProp = {sampleRate, true, true, 0, 0, 0, pathToROMfiles,
-		NULL, MT32_Report, NULL, NULL, NULL};
+		NULL, MT32_Report, printDebug, NULL, NULL};
 	if (!synth->open(synthProp)) {
 		MessageBox(NULL, L"Can't open Synth", NULL, MB_OK | MB_ICONEXCLAMATION);
 		return 1;
 	}
-	synth->setReverbEnabled(reverbEnabled);
-	synth->setDACInputMode(emuDACInputMode);
+
+	ApplySettings();
 
 	//	Init External Interface
 #if MT32EMU_USE_EXTINT == 1
@@ -422,10 +455,7 @@ int MidiSynth::Init() {
 	wResult = waveOut.Init(stream, len, sampleRate);
 	if (wResult) return wResult;
 
-	wResult = midiIn.Init(midiDevID);
-	if (wResult) return wResult;
-
-	//	Start playing streams
+	//	Start playing stream
 	synth->render(stream, len);
 
 	pendingClose = false;
@@ -434,39 +464,20 @@ int MidiSynth::Init() {
 	if (wResult) return wResult;
 
 	playCursor = 0;
-
-	wResult = midiIn.Start();
-	if (wResult) return wResult;
-	
-	_beginthread(&render, 16384, NULL);
-
+	_beginthread(render, 16384, NULL);
 	return 0;
-}
-
-void MidiSynth::SetMasterVolume(UINT masterVolume) {
-	synth->setOutputGain(masterVolume / 100.0f);
-	synth->setReverbOutputGain(masterVolume / 147.0f);
-}
-
-void MidiSynth::SetReverbEnabled(bool pReverbEnabled) {
-	reverbEnabled = pReverbEnabled;
-	synth->setReverbEnabled(reverbEnabled);
-}
-
-void MidiSynth::SetDACInputMode(DACInputMode pEmuDACInputMode) {
-	emuDACInputMode = pEmuDACInputMode;
-	synth->setDACInputMode(emuDACInputMode);
-}
-
-void MidiSynth::SetParameters(UINT pSampleRate, UINT pMidiDevID, UINT platency) {
-	sampleRate = pSampleRate;
-	latency = platency;
-	len = UINT(latency * sampleRate / 1000.f);
-	midiDevID = pMidiDevID;
 }
 
 int MidiSynth::Reset() {
 	UINT wResult;
+
+#ifdef DRIVER_MODE
+	ReloadSettings();
+	if (!resetEnabled) {
+		ApplySettings();
+		return 0;
+	}
+#endif
 
 	wResult = waveOut.Pause();
 	if (wResult) return wResult;
@@ -477,13 +488,12 @@ int MidiSynth::Reset() {
 
 	synth = new Synth();
 	SynthProperties synthProp = {sampleRate, true, true, 0, 0, 0, pathToROMfiles,
-		NULL, MT32_Report, NULL, NULL, NULL};
+		NULL, MT32_Report, printDebug, NULL, NULL};
 	if (!synth->open(synthProp)) {
 		MessageBox(NULL, L"Can't open Synth", NULL, MB_OK | MB_ICONEXCLAMATION);
 		return 1;
 	}
-	synth->setReverbEnabled(reverbEnabled);
-	synth->setDACInputMode(emuDACInputMode);
+	ApplySettings();
 	synthEvent.Release();
 
 	wResult = waveOut.Resume();
@@ -496,12 +506,18 @@ bool MidiSynth::IsPendingClose() {
 	return pendingClose;
 }
 
-void MidiSynth::PlaySysex(Bit8u *bufpos, DWORD len) {
-	synth->playSysex(bufpos, len);
+void MidiSynth::PushMIDI(DWORD msg) {
+#ifndef RENDER_EVERY_MS
+	midiStream.PutMessage(msg, waveOut.GetPos() % len);
+#else
+	midiStream.PutMessage(msg, 0);
+#endif
 }
 
-DWORD MidiSynth::GetTimeStamp() {
-	return waveOut.GetPos() % len;
+void MidiSynth::PlaySysex(Bit8u *bufpos, DWORD len) {
+	synthEvent.Wait();
+	synth->playSysex(bufpos, len);
+	synthEvent.Release();
 }
 
 int MidiSynth::Close() {
@@ -517,9 +533,7 @@ int MidiSynth::Close() {
 	}
 #endif
 
-	waveOut.Pause();
-
-	wResult = midiIn.Close();
+	wResult = waveOut.Pause();
 	if (wResult) return wResult;
 
 	wResult = waveOut.Close();

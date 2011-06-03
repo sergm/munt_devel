@@ -60,7 +60,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="mt32emu.lib SDL_net.lib user32.lib winmm.lib $(NOINHERIT)"
+				AdditionalDependencies="mt32emu.lib SDL_net.lib advapi32.lib user32.lib winmm.lib $(NOINHERIT)"
 				LinkIncremental="2"
 				AdditionalLibraryDirectories="&quot;..\mt32emu\$(ConfigurationName)&quot;;..\SDL\lib"
 				GenerateDebugInformation="true"
@@ -135,7 +135,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="mt32emu.lib SDL_net.lib user32.lib winmm.lib $(NOINHERIT)"
+				AdditionalDependencies="mt32emu.lib SDL_net.lib advapi32.lib user32.lib winmm.lib $(NOINHERIT)"
 				OutputFile="$(OutDir)\mt32emu.exe"
 				LinkIncremental="1"
 				AdditionalLibraryDirectories="&quot;..\mt32emu\$(ConfigurationName)&quot;;..\SDL\lib"

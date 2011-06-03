@@ -25,37 +25,54 @@ class MidiSynth {
 private:
 	unsigned int sampleRate;
 	unsigned int len;
-	unsigned int midiDevID;
 	unsigned int latency;
-	bool reverbEnabled;
+	char pathToROMfiles[256];
+	bool resetEnabled;
 	DACInputMode emuDACInputMode;
+	float outputGain;
+	float reverbOutputGain;
+	bool reverbEnabled;
+	bool reverbOverridden;
+	Bit8u reverbMode;
+	Bit8u reverbTime;
+	Bit8u reverbLevel;
 
 	Bit16s *stream;
-	char *pathToROMfiles;
 
 	bool pendingClose;
 	DWORD playCursor;
 
 	Synth *synth;
 
-public:
+	void LoadSettings();
+	void ReloadSettings();
+	void ApplySettings();
 
 #if MT32EMU_USE_EXTINT == 1
 	MT32Emu::ExternalInterface *mt32emuExtInt;
 #endif
 
+public:
+
 	MidiSynth();
 	int Init();
 	int Close();
 	int Reset();
+	void StoreSettings(
+		int newSampleRate,
+		int newLatency,
+		bool newReverbEnabled,
+		bool newReverbOverridden,
+		int newReverbMode,
+		int newReverbTime,
+		int newReverbLevel,
+		int newOutputGain,
+		int newReverbGain,
+		int newDACInputMode);
 	void Render();
+	void PushMIDI(DWORD msg);
 	void PlaySysex(Bit8u *bufpos, DWORD len);
-	void SetMasterVolume(UINT pMasterVolume);
-	void SetReverbEnabled(bool pReverbEnabled);
-	void SetDACInputMode(DACInputMode pEmuDACInputMode);
-	void SetParameters(UINT pSampleRate, UINT pmidiDevID, UINT platency);
 	bool IsPendingClose();
-	DWORD GetTimeStamp();
 	void handleReport(MT32Emu::ReportType type, const void *reportData);
 };
 
