@@ -8,6 +8,6 @@ mt32emu_win32app_CLR - MT32Emu WinMM Application (CLR / .NET)
 
 mt32emu_Qt - MT32Emu Application, uses Qt and tageted to be cross-platform
 
-mt32emu_winMM_drv - a WinMM driver needed to feed MIDI messages to a synth application
+mt32emu_win32drv_ring - a version of WinMM driver with low-latency synth engine
 
-mt32emu_winMM_app - MT32Emu Application, uses mt32emu_winMM_drv to get MIDI messages
+mt32emu_winMM_app - MT32Emu Application that receives MIDI messages supplied by the WinMM driver
