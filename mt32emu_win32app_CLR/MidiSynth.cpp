@@ -20,8 +20,9 @@ namespace MT32Emu {
 
 MidiSynth *midiSynth;
 
-#define	RENDER_EVERY_MS 1 // provides minimum possible latency
-#define	MIN_RENDER_SAMPLES 320 // render at least this number of samples
+#define	RENDER_EVERY_MS 1				// provides minimum possible latency
+#define	MIN_RENDER_SAMPLES 320	// render at least this number of samples
+#define	SAFE_RENDER_SAMPLES 320	// render up to this safe point
 
 class MidiStream {
 private:
@@ -126,7 +127,12 @@ static void CALLBACK MidiInProc(HMIDIIN hMidiIn, UINT wMsg, DWORD_PTR dwInstance
 	}
 	if (wMsg != MIM_DATA)
 		return;
+
+#ifndef RENDER_EVERY_MS
 	midiStream.PutMessage(dwParam1, midiSynth->GetTimeStamp());
+#else
+	midiStream.PutMessage(dwParam1, 0);
+#endif
 }
 
 public:
@@ -296,7 +302,6 @@ void render(void *) {
 
 void MidiSynth::Render() {
 	DWORD msg, timeStamp;
-	DWORD playlen;
 	Bit16s *bufpos;
 	DWORD buflen;
 
@@ -312,14 +317,19 @@ void MidiSynth::Render() {
 				continue;
 			}
 #else
-			if (buflen < MIN_RENDER_SAMPLES) {
-				Sleep(DWORD((MIN_RENDER_SAMPLES - buflen) * 0.028f));
+			if (buflen < SAFE_RENDER_SAMPLES + MIN_RENDER_SAMPLES) {
+				Sleep(DWORD((SAFE_RENDER_SAMPLES + MIN_RENDER_SAMPLES - buflen) * 0.028f));
 				continue;
+			} else {
+				buflen -= SAFE_RENDER_SAMPLES;
 			}
 #endif
 
 		} else {
 			buflen = len - playCursor;
+			if (timeStamp < SAFE_RENDER_SAMPLES) {
+				Sleep(DWORD(SAFE_RENDER_SAMPLES * 0.028f));
+			}
 		}
 
 		for(;;) {
@@ -328,8 +338,9 @@ void MidiSynth::Render() {
 				break;
 			}
 
+#ifndef RENDER_EVERY_MS
 			//	render samples from playCursor to current midiMessage timeStamp
-			playlen = timeStamp - playCursor;
+			DWORD playlen = timeStamp - playCursor;
 			if (playlen > buflen) {	// if midiMessage is too far - exit
 				break;
 			}
@@ -341,6 +352,7 @@ void MidiSynth::Render() {
 				bufpos += 2 * playlen;
 				buflen -= playlen;
 			}
+#endif
 
 			// play midiMessage
 			msg = midiStream.GetMessage();
