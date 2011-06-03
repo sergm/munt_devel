@@ -230,7 +230,7 @@ void render(void *) {
 }
 
 void MidiSynth::Render() {
-	DWORD msg, timeStamp;
+	DWORD timeStamp;
 	Bit16s *bufpos;
 	DWORD buflen;
 
@@ -285,7 +285,7 @@ void MidiSynth::Render() {
 			}
 
 			// play midiMessage
-			msg = midiStream.GetMessage();
+			DWORD msg = midiStream.GetMessage();
 			synthEvent.Wait();
 			synth->playMsg(msg);
 			synthEvent.Release();
