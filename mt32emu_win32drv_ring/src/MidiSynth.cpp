@@ -251,9 +251,11 @@ void MidiSynth::Render() {
 
 		} else {
 			buflen = len - playCursor;
+#ifndef RENDER_EVERY_MS
 			if (timeStamp < SAFE_RENDER_SAMPLES) {
 				Sleep(DWORD(SAFE_RENDER_SAMPLES * 0.028f));
 			}
+#endif
 		}
 
 		for(;;) {
