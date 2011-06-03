@@ -263,13 +263,13 @@ void MidiSynth::Render() {
 #endif
 		}
 
+#ifndef RENDER_EVERY_MS
 		for(;;) {
 			timeStamp = midiStream.PeekMessageTime();
 			if (timeStamp == -1) {	// if midiStream is empty - exit
 				break;
 			}
 
-#ifndef RENDER_EVERY_MS
 			//	render samples from playCursor to current midiMessage timeStamp
 			DWORD playlen = timeStamp - playCursor;
 			if (playlen > buflen) {	// if midiMessage is too far - exit
@@ -283,7 +283,6 @@ void MidiSynth::Render() {
 				bufpos += 2 * playlen;
 				buflen -= playlen;
 			}
-#endif
 
 			// play midiMessage
 			msg = midiStream.GetMessage();
@@ -291,6 +290,7 @@ void MidiSynth::Render() {
 			synth->playMsg(msg);
 			synthEvent.Release();
 		}
+#endif
 
 		//	render rest of samples
 		synthEvent.Wait();
@@ -510,7 +510,9 @@ void MidiSynth::PushMIDI(DWORD msg) {
 #ifndef RENDER_EVERY_MS
 	midiStream.PutMessage(msg, waveOut.GetPos() % len);
 #else
-	midiStream.PutMessage(msg, 0);
+	synthEvent.Wait();
+	synth->playMsg(msg);
+	synthEvent.Release();
 #endif
 }
 
