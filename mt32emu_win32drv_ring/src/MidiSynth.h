@@ -44,20 +44,31 @@ private:
 
 	Synth *synth;
 
-public:
+	void LoadSettings();
+	void ReloadSettings();
+	void ApplySettings();
 
 #if MT32EMU_USE_EXTINT == 1
 	MT32Emu::ExternalInterface *mt32emuExtInt;
 #endif
 
+public:
+
 	MidiSynth();
 	int Init();
 	int Close();
 	int Reset();
-	void LoadSettings();
-	void ReloadSettings();
-	void ApplySettings();
-	void SetMasterVolume(UINT pMasterVolume);
+	void StoreSettings(
+		int newSampleRate,
+		int newLatency,
+		bool newReverbEnabled,
+		bool newReverbOverridden,
+		int newReverbMode,
+		int newReverbTime,
+		int newReverbLevel,
+		int newOutputGain,
+		int newReverbGain,
+		int newDACInputMode);
 	void Render();
 	void PushMIDI(DWORD msg);
 	void PlaySysex(Bit8u *bufpos, DWORD len);

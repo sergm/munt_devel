@@ -20,8 +20,9 @@ namespace MT32Emu {
 
 MidiSynth *midiSynth;
 
-#define	RENDER_EVERY_MS 1 // provides minimum possible latency
-#define	MIN_RENDER_SAMPLES 320 // render at least this number of samples
+#define	DRIVER_MODE
+#define	RENDER_EVERY_MS 1				// provides minimum possible latency
+#define	MIN_RENDER_SAMPLES 320	// render at least this number of samples
 #define	SAFE_RENDER_SAMPLES 320	// render up to this safe point
 
 class MidiStream {
@@ -190,8 +191,12 @@ public:
 	}
 } waveOut;
 
+#ifdef DRIVER_MODE
 void printDebug(void *userData, const char *fmt, va_list list) {
 }
+#else
+#define printDebug NULL
+#endif
 
 int MT32_Report(void *userData, ReportType type, const void *reportData) {
 #if MT32EMU_USE_EXTINT == 1
@@ -378,6 +383,44 @@ void MidiSynth::ApplySettings() {
 	}
 }
 
+void MidiSynth::StoreSettings(
+	int newSampleRate,
+	int newLatency,
+	bool newReverbEnabled,
+	bool newReverbOverridden,
+	int newReverbMode,
+	int newReverbTime,
+	int newReverbLevel,
+	int newOutputGain,
+	int newReverbGain,
+	int newDACInputMode) {
+
+	reverbEnabled = newReverbEnabled;
+	synth->setReverbEnabled(reverbEnabled);
+
+	outputGain = (float)newOutputGain;
+	synth->setOutputGain(outputGain / 100.0f);
+
+	reverbOutputGain = (float)newReverbGain;
+	synth->setReverbOutputGain(reverbOutputGain / 147.0f);
+
+	emuDACInputMode = (DACInputMode)newDACInputMode;
+	synth->setDACInputMode(emuDACInputMode);
+
+	reverbMode = newReverbMode;
+	reverbTime = newReverbTime;
+	reverbLevel = newReverbLevel;
+	reverbOverridden = newReverbOverridden;
+	if (reverbOverridden) {
+		synthEvent.Wait();
+		Bit8u sysex[] = {0x10, 0x00, 0x01, reverbMode, reverbTime, reverbLevel};
+		synth->setReverbOverridden(false);
+		synth->writeSysex(16, sysex, 6);
+		synth->setReverbOverridden(true);
+		synthEvent.Release();
+	}
+}
+
 int MidiSynth::Init() {
 	UINT wResult;
 
@@ -428,11 +471,13 @@ int MidiSynth::Init() {
 int MidiSynth::Reset() {
 	UINT wResult;
 
+#ifdef DRIVER_MODE
 	ReloadSettings();
 	if (!resetEnabled) {
 		ApplySettings();
 		return 0;
 	}
+#endif
 
 	wResult = waveOut.Pause();
 	if (wResult) return wResult;
@@ -488,13 +533,13 @@ int MidiSynth::Close() {
 	}
 #endif
 
-	synthEvent.Wait();
 	wResult = waveOut.Pause();
 	if (wResult) return wResult;
 
 	wResult = waveOut.Close();
 	if (wResult) return wResult;
 
+	synthEvent.Wait();
 	synth->close();
 
 	// Cleanup memory
