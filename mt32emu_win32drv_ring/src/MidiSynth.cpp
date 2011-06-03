@@ -237,7 +237,7 @@ void MidiSynth::Render() {
 	while (!pendingClose) {
 		bufpos = stream + 2 * playCursor;
 		timeStamp = waveOut.GetPos() % len;
-		if (timeStamp > playCursor) {
+		if (timeStamp >= playCursor) {
 			buflen = timeStamp - playCursor;
 
 #ifdef RENDER_EVERY_MS
