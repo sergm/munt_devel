@@ -322,7 +322,7 @@ DWORD LoadStringValue(char *key, char *nDefault, char *destination, DWORD nSize)
 
 void MidiSynth::LoadSettings() {
 	sampleRate = LoadIntValue("SampleRate", 32000);
-	latency = LoadIntValue("Latency", 50);
+	latency = LoadIntValue("Latency", 90);
 	len = UINT(sampleRate * latency / 1000.f);
 	ReloadSettings();
 }
