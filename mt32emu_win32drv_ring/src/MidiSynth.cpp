@@ -241,7 +241,7 @@ void MidiSynth::Render() {
 			buflen = timeStamp - playCursor;
 
 #ifdef RENDER_EVERY_MS
-			if (buflen < 64) {
+			if (buflen < 32) {
 				Sleep(1);
 				continue;
 			}
