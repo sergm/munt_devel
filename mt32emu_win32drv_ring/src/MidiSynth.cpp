@@ -21,9 +21,8 @@ namespace MT32Emu {
 MidiSynth *midiSynth;
 
 #define	DRIVER_MODE
-#define	RENDER_EVERY_MS 1				// provides minimum possible latency
-#define	MIN_RENDER_SAMPLES 320	// render at least this number of samples
-#define	SAFE_RENDER_SAMPLES 320	// render up to this safe point
+#define	MIN_RENDER_MS 10	// rendering time
+#define	MIDI_LATENCY_MS 10
 
 class MidiStream {
 private:
@@ -233,37 +232,23 @@ void MidiSynth::Render() {
 	DWORD timeStamp;
 	Bit16s *bufpos;
 	DWORD buflen;
+	DWORD minSamplesToRender = (MIN_RENDER_MS * sampleRate) / 1000;
+	DWORD midiLatency = (MIDI_LATENCY_MS * sampleRate) / 1000;
 
 	while (!pendingClose) {
 		bufpos = stream + 2 * playCursor;
 		timeStamp = waveOut.GetPos() % len;
-		if (timeStamp >= playCursor) {
-			buflen = timeStamp - playCursor;
-
-#ifdef RENDER_EVERY_MS
-			if (buflen < 32) {
-				Sleep(1);
-				continue;
-			}
-#else
-			if (buflen < SAFE_RENDER_SAMPLES + MIN_RENDER_SAMPLES) {
-				Sleep(DWORD((SAFE_RENDER_SAMPLES + MIN_RENDER_SAMPLES - buflen) * 0.028f));
-				continue;
-			} else {
-				buflen -= SAFE_RENDER_SAMPLES;
-			}
-#endif
-
-		} else {
+		if (timeStamp < playCursor) {
+			// Buffer wrap, render 'till the end of buffer
 			buflen = len - playCursor;
-#ifndef RENDER_EVERY_MS
-			if (timeStamp < SAFE_RENDER_SAMPLES) {
-				Sleep(DWORD(SAFE_RENDER_SAMPLES * 0.028f));
+		} else {
+			buflen = timeStamp - playCursor;
+			if (buflen < minSamplesToRender) {
+				Sleep(1 + (minSamplesToRender - buflen) * 1000 / sampleRate);
+				continue;
 			}
-#endif
 		}
 
-#ifndef RENDER_EVERY_MS
 		for(;;) {
 			timeStamp = midiStream.PeekMessageTime();
 			if (timeStamp == -1) {	// if midiStream is empty - exit
@@ -271,7 +256,12 @@ void MidiSynth::Render() {
 			}
 
 			//	render samples from playCursor to current midiMessage timeStamp
-			DWORD playlen = timeStamp - playCursor;
+			DWORD playlen = (timeStamp + midiLatency) % len - playCursor;
+#if 0
+			if ((int)playlen < 0) {
+				std::cout << "L" << (int)playlen << ", " << (int)playlen / 32.0 << "\n";
+			}
+#endif
 			if (playlen > buflen) {	// if midiMessage is too far - exit
 				break;
 			}
@@ -290,7 +280,6 @@ void MidiSynth::Render() {
 			synth->playMsg(msg);
 			synthEvent.Release();
 		}
-#endif
 
 		//	render rest of samples
 		synthEvent.Wait();
@@ -507,13 +496,7 @@ bool MidiSynth::IsPendingClose() {
 }
 
 void MidiSynth::PushMIDI(DWORD msg) {
-#ifndef RENDER_EVERY_MS
 	midiStream.PutMessage(msg, waveOut.GetPos() % len);
-#else
-	synthEvent.Wait();
-	synth->playMsg(msg);
-	synthEvent.Release();
-#endif
 }
 
 void MidiSynth::PlaySysex(Bit8u *bufpos, DWORD len) {
