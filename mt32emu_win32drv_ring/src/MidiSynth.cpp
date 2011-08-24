@@ -105,6 +105,8 @@ class WaveOutWin32 {
 private:
 	HWAVEOUT	hWaveOut;
 	WAVEHDR		WaveHdr;
+	_int64		playPosGlobal;
+	DWORD			prevPlayPos;
 
 public:
 	int Init(Bit16s *stream, unsigned int len, unsigned int sampleRate) {
@@ -155,6 +157,8 @@ public:
 	}
 
 	int Start() {
+		playPosGlobal = 0;
+		prevPlayPos = 0;
 		if (waveOutWrite(hWaveOut, &WaveHdr, sizeof(WAVEHDR)) != MMSYSERR_NOERROR) {
 			MessageBox(NULL, L"Failed to write block to device", NULL, MB_OK | MB_ICONEXCLAMATION);
 			return 4;
@@ -178,7 +182,7 @@ public:
 		return 0;
 	}
 
-	DWORD GetPos() {
+	_int64 GetPos() {
 		MMTIME mmTime;
 		mmTime.wType = TIME_SAMPLES;
 
@@ -186,7 +190,11 @@ public:
 			MessageBox(NULL, L"Failed to get current playback position", NULL, MB_OK | MB_ICONEXCLAMATION);
 			return 10;
 		}
-		return mmTime.u.sample;
+
+		// Unwrap current playing position (for 16-bit stereo it wraps at 2^27 frames)
+		playPosGlobal += (mmTime.u.sample - prevPlayPos) & ((1 << 27) - 1);
+		prevPlayPos = mmTime.u.sample;
+		return playPosGlobal;
 	}
 } waveOut;
 
@@ -238,6 +246,7 @@ void MidiSynth::Render() {
 	while (!pendingClose) {
 		bufpos = stream + 2 * playCursor;
 		timeStamp = waveOut.GetPos() % len;
+
 		if (timeStamp < playCursor) {
 			// Buffer wrap, render 'till the end of buffer
 			buflen = len - playCursor;
@@ -257,11 +266,6 @@ void MidiSynth::Render() {
 
 			//	render samples from playCursor to current midiMessage timeStamp
 			DWORD playlen = (timeStamp + midiLatency) % len - playCursor;
-#if 0
-			if ((int)playlen < 0) {
-				std::cout << "L" << (int)playlen << ", " << (int)playlen / 32.0 << "\n";
-			}
-#endif
 			if (playlen > buflen) {	// if midiMessage is too far - exit
 				break;
 			}
