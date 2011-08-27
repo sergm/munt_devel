@@ -105,8 +105,8 @@ class WaveOutWin32 {
 private:
 	HWAVEOUT	hWaveOut;
 	WAVEHDR		WaveHdr;
-	_int64		playPosGlobal;
 	DWORD			prevPlayPos;
+	DWORD			getPosWraps;
 
 public:
 	int Init(Bit16s *stream, unsigned int len, unsigned int sampleRate) {
@@ -157,7 +157,7 @@ public:
 	}
 
 	int Start() {
-		playPosGlobal = 0;
+		getPosWraps = 0;
 		prevPlayPos = 0;
 		if (waveOutWrite(hWaveOut, &WaveHdr, sizeof(WAVEHDR)) != MMSYSERR_NOERROR) {
 			MessageBox(NULL, L"Failed to write block to device", NULL, MB_OK | MB_ICONEXCLAMATION);
@@ -182,7 +182,7 @@ public:
 		return 0;
 	}
 
-	_int64 GetPos() {
+	UINT64 GetPos() {
 		MMTIME mmTime;
 		mmTime.wType = TIME_SAMPLES;
 
@@ -190,11 +190,22 @@ public:
 			MessageBox(NULL, L"Failed to get current playback position", NULL, MB_OK | MB_ICONEXCLAMATION);
 			return 10;
 		}
+		if (mmTime.wType != TIME_SAMPLES) {
+			MessageBox(NULL, L"Failed to get # of samples played", NULL, MB_OK | MB_ICONEXCLAMATION);
+			return 10;
+		}
 
-		// Unwrap current playing position (for 16-bit stereo it wraps at 2^27 frames)
-		playPosGlobal += (mmTime.u.sample - prevPlayPos) & ((1 << 27) - 1);
+		// Deal with waveOutGetPosition() wraparound. For 16-bit stereo output, it equals 2^27,
+		// presumably caused by the internal 32-bit counter of bits played.
+		// The output of that nasty waveOutGetPosition() isn't monotonically increasing
+		// even during 2^27 samples playback, so we have to ensure the difference is big enough...
+		int delta = mmTime.u.sample - prevPlayPos;
+		if (delta < -(1 << 26)) {
+			std::cout << "GetPos() wrap: " << delta << "\n";
+			++getPosWraps;
+		}
 		prevPlayPos = mmTime.u.sample;
-		return playPosGlobal;
+		return mmTime.u.sample + getPosWraps * (1 << 27);
 	}
 } waveOut;
 
