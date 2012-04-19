@@ -175,7 +175,7 @@ private:
 
 	void render(const Bitu len, Bit16s *buf) {
 		Bitu framesTotal = len;
-		Bitu renderPos = midiHandler_mt32.renderPos;
+		Bitu renderPos = this->renderPos;
 		Bit16s *revBuf = &buf[renderPos];
 		if (renderInThread) SDL_LockMutex(synthMutex);
 		while (framesTotal > 0) {
@@ -199,7 +199,7 @@ private:
 			framesTotal -= framesToRender;
 			renderPos += framesToRender << 1;
 			renderPos %= AUDIO_BUFFER_SIZE;
-			midiHandler_mt32.renderPos = renderPos;
+			this->renderPos = renderPos;
 		}
 		if (renderInThread) SDL_UnlockMutex(synthMutex);
 		if (reverseStereo) {
