@@ -143,11 +143,12 @@ private:
 		if (msg != 0) synth->playMsg(msg);
 		synth->render(buf, len);
 		if (reverseStereo) {
+			Bit16s *revBuf = buf;
 			for(Bitu i = 0; i < len; i++) {
-				Bit16s left = *buf;
-				Bit16s right = buf[1];
-				*buf++ = right;
-				*buf++ = left;
+				Bit16s left = revBuf[0];
+				Bit16s right = revBuf[1];
+				*revBuf++ = right;
+				*revBuf++ = left;
 			}
 		}
 		chan->AddSamples_s16(len, buf);

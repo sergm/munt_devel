@@ -176,6 +176,7 @@ private:
 	void render(const Bitu len, Bit16s *buf) {
 		Bitu framesTotal = len;
 		Bitu renderPos = midiHandler_mt32.renderPos;
+		Bit16s *revBuf = &buf[renderPos];
 		if (renderInThread) SDL_LockMutex(synthMutex);
 		while (framesTotal > 0) {
 			Bit64u msg = midiBuffer.peek();
@@ -203,10 +204,10 @@ private:
 		if (renderInThread) SDL_UnlockMutex(synthMutex);
 		if (reverseStereo) {
 			for(Bitu i = 0; i < len; i++) {
-				Bit16s left = *buf;
-				Bit16s right = buf[1];
-				*buf++ = right;
-				*buf++ = left;
+				Bit16s left = revBuf[0];
+				Bit16s right = revBuf[1];
+				*revBuf++ = right;
+				*revBuf++ = left;
 			}
 		}
 	}
