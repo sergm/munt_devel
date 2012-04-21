@@ -145,7 +145,7 @@ public:
 	}
 
 	void PlayMsg(Bit8u *msg) {
-		if (!midiBuffer.put(*(Bit32u *)msg | ((Bit64u)playPos << 32))) LOG_MSG("MT32: Playback buffer full!");
+		if (!midiBuffer.put(*(Bit32u *)msg | (Bit64u(playPos + AUDIO_BUFFER_SIZE) << 32))) LOG_MSG("MT32: Playback buffer full!");
 	}
 
 	void PlaySysex(Bit8u *sysex, Bitu len) {
@@ -176,7 +176,7 @@ private:
 	void render(const Bitu len, Bit16s *buf) {
 		Bitu framesTotal = len;
 		Bitu renderPos = this->renderPos;
-		Bit16s *revBuf = &buf[renderPos];
+		Bit16s *revBuf = &buf[renderPos % AUDIO_BUFFER_SIZE];
 		if (renderInThread) SDL_LockMutex(synthMutex);
 		while (framesTotal > 0) {
 			Bit64u msg = midiBuffer.peek();
@@ -195,10 +195,9 @@ private:
 					synth->playMsg((Bit32u)midiBuffer.take());
 				}
 			}
-			synth->render(&buf[renderPos], framesToRender);
+			synth->render(&buf[renderPos % AUDIO_BUFFER_SIZE], framesToRender);
 			framesTotal -= framesToRender;
 			renderPos += framesToRender << 1;
-			renderPos %= AUDIO_BUFFER_SIZE;
 			this->renderPos = renderPos;
 		}
 		if (renderInThread) SDL_UnlockMutex(synthMutex);
@@ -226,8 +225,8 @@ void MidiHandler_mt32::mixerCallBack(Bitu len) {
 		while (midiHandler_mt32.renderPos == midiHandler_mt32.playPos) {
 			SDL_Delay(1);
 		}
-		Bitu renderPos = midiHandler_mt32.renderPos;
-		Bitu playPos = midiHandler_mt32.playPos;
+		Bitu renderPos = midiHandler_mt32.renderPos % AUDIO_BUFFER_SIZE;
+		Bitu playPos = midiHandler_mt32.playPos % AUDIO_BUFFER_SIZE;
 		Bitu samplesReady;
 		if (renderPos < playPos) {
 			samplesReady = AUDIO_BUFFER_SIZE - playPos;
@@ -238,8 +237,7 @@ void MidiHandler_mt32::mixerCallBack(Bitu len) {
 			len = samplesReady >> 1;
 		}
 		midiHandler_mt32.chan->AddSamples_s16(len, &midiHandler_mt32.audioBuffer[playPos]);
-		playPos += len << 1;
-		midiHandler_mt32.playPos = playPos % AUDIO_BUFFER_SIZE;
+		midiHandler_mt32.playPos += len << 1;
 	} else {
 		midiHandler_mt32.renderPos = 0;
 		midiHandler_mt32.render(len, (Bit16s *)MixTemp);
@@ -249,8 +247,8 @@ void MidiHandler_mt32::mixerCallBack(Bitu len) {
 
 int MidiHandler_mt32::processingThread(void *) {
 	while (!midiHandler_mt32.stopProcessing) {
-		Bitu renderPos = midiHandler_mt32.renderPos;
-		Bitu playPos = midiHandler_mt32.playPos;
+		Bitu renderPos = midiHandler_mt32.renderPos % AUDIO_BUFFER_SIZE;
+		Bitu playPos = midiHandler_mt32.playPos % AUDIO_BUFFER_SIZE;
 		Bitu framesToRender;
 		if (renderPos < playPos) {
 			framesToRender = (playPos - renderPos - 2) >> 1;
@@ -260,7 +258,7 @@ int MidiHandler_mt32::processingThread(void *) {
 			}
 		} else {
 			framesToRender = (AUDIO_BUFFER_SIZE - renderPos) >> 1;
-			if (midiHandler_mt32.playPos == 0) {
+			if (playPos == 0) {
 				framesToRender--;
 				if (framesToRender == 0) {
 					SDL_Delay(1 + (MILLIS_PER_SECOND * MINIMUM_RENDER_FRAMES) / SAMPLE_RATE);
