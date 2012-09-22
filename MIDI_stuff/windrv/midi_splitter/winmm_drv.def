@@ -1,0 +1,4 @@
+LIBRARY      midi_splitter
+EXPORTS
+	DriverProc
+	modMessage

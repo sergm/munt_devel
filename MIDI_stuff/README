@@ -1,0 +1,12 @@
+midi_sender   - sysex splitter for Roland MT32-compatibles, proof of concept.
+
+usb_sender    - sends messages including sysexes to unbuffered synchronized USB-MIDI devices using libusb, proof of concept.
+
+midi_splitter - driver which ensures sending full-length (266 bytes) sysexes to buggy USB-MIDI devices,
+                e.g. MIDITECH MIDILINK-mini (VID=0x1ACC, PID=0x1A00). It seems this weird device has a nasty bug in USB sync,
+                which leads to dropping sysex data right after the first 128 bytes are sent. A delay using the system timer added.
+
+usb-midi      - another driver for no less weird USB-MIDI device "USB2.0-MIDI" from QinHeng Electronics (VID=1A86, PID=752D)
+                It seems completely unbuffered, so it's impossible to send sysexes of length > 3 bytes using standard Win driver.
+                Though, on Linux it works almost great. It seems Linux driver sends packets one by one. Well, unchecked but it works.
+                Anyway, using MIDI-In for reading sysexes is a bad idea due to it's unbuffered. Needs libusb.
