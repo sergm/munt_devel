@@ -4,12 +4,6 @@ devel - test programs helping research of filtered square wave generation
 
 DOSBox-mt32-patch - patch for official DOSBox release v.0.74 to add mt32emu MIDI device
 
-mt32emu_win32app - MT32Emu WinMM Application (Console)
-
-mt32emu_win32app_CLR - MT32Emu WinMM Application (CLR / .NET)
-
-mt32emu_Qt - MT32Emu Application, uses Qt and tageted to be cross-platform
+mt32emu_win32app - MT32Emu WinMM Application (CLR / .NET)
 
 mt32emu_win32drv_ring - a version of WinMM driver with low-latency synth engine
-
-mt32emu_winMM_app - MT32Emu Application that receives MIDI messages supplied by the WinMM driver
