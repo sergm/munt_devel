@@ -36,7 +36,6 @@ int main(int argc, char *argv[]) {
 		if (!std::cin.eof()) {
 			std::cin >> inl >> inr;
 		}
-		inl = 0;
 		float inLeft = inl / 8192.0f;
 		float inRight = inr / 8192.0f;
 		float outLeft, outRight;
