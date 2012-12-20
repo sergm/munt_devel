@@ -2,7 +2,7 @@
 <VisualStudioProject
 	ProjectType="Visual C++"
 	Version="9,00"
-	Name="mt32emu_areverb_tester"
+	Name="mt32emu_breverb_tester"
 	ProjectGUID="{16E05969-A290-467A-B891-6647A748AF5F}"
 	RootNamespace="mt32emu"
 	Keyword="ManagedCProj"
@@ -42,7 +42,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="..\..\mt32emu_qt\mt32emu\src"
+				AdditionalIncludeDirectories="..\..\munt\mt32emu\src"
 				PreprocessorDefinitions="WIN32;_DEBUG"
 				MinimalRebuild="true"
 				RuntimeLibrary="3"
@@ -118,7 +118,7 @@
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
-				AdditionalIncludeDirectories="..\..\mt32emu_qt\mt32emu\src"
+				AdditionalIncludeDirectories="..\..\munt\mt32emu\src"
 				PreprocessorDefinitions="WIN32;NDEBUG"
 				RuntimeLibrary="2"
 				UsePrecompiledHeader="2"
@@ -202,7 +202,7 @@
 			UniqueIdentifier="{4FC737F1-C7A5-4376-A066-2A32D752A2FF}"
 			>
 			<File
-				RelativePath=".\mt32emu_areverb_tester.cpp"
+				RelativePath=".\mt32emu_breverb_tester.cpp"
 				>
 			</File>
 			<File

@@ -8,4 +8,4 @@ mt32emu_win32app - MT32Emu WinMM Application (CLR / .NET)
 
 MIDI_stuff - drivers and utilites which can appear useful for specific MIDI-related tasks
 
-mt32emu_areverb_tester - a tiny tooly that helps with testing AReverb model on arbitrary input (alas, current munt is still inaccurate a bit)
+mt32emu_breverb_tester - a tiny tooly that helps with testing AReverb / BReverb model on arbitrary input (alas, current munt is still inaccurate a bit)

@@ -27,9 +27,21 @@ int main(int argc, char *argv[]) {
 		std::cout << "Wrong value for level, must be in range 0..7";
 		return 2;
 	}
+#if MT32EMU_USE_REVERBMODEL == 1
 	AReverbModel model((ReverbMode)mode);
+#elif MT32EMU_USE_REVERBMODEL == 2
+	BReverbModel model((ReverbMode)mode);
+#endif
 	model.open(32000);
 	model.setParameters(time, level);
+	// This simulates warmup time for allpass buffers to fill with noise
+	for (int i = 0; i < 0; i++) {
+		float inLeft = 0.0f;
+		float inRight = 0.0f;
+		float outLeft, outRight;
+		model.process(&inLeft, &inRight, &outLeft, &outRight, 1);
+	}
+	int i = 0;
 	do {
 		Bit16s inl = 0;
 		Bit16s inr = 0;
@@ -43,6 +55,6 @@ int main(int argc, char *argv[]) {
 		Bit16s outl = Bit16s(outLeft * 8192.0f);
 		Bit16s outr = Bit16s(outRight * 8192.0f);
 		std::cout << outl << "; " << outr << std::endl;
-	} while (model.isActive());
+	} while (i++ < 65535 && model.isActive());
 	return 0;
 }

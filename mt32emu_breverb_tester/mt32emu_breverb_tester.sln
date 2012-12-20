@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 10.00
 # Visual C++ Express 2008
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "mt32emu", "..\mt32emu\mt32emu_msvc.vcproj", "{063A149D-E48C-499B-B13F-7A70C140A662}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "mt32emu_areverb_tester", "mt32emu_areverb_tester.vcproj", "{16E05969-A290-467A-B891-6647A748AF5F}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "mt32emu_breverb_tester", "mt32emu_breverb_tester.vcproj", "{16E05969-A290-467A-B891-6647A748AF5F}"
 	ProjectSection(ProjectDependencies) = postProject
 		{063A149D-E48C-499B-B13F-7A70C140A662} = {063A149D-E48C-499B-B13F-7A70C140A662}
 	EndProjectSection
