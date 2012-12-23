@@ -13,8 +13,8 @@ int main(int argc, char *argv[]) {
 		return 1;
 	}
 	int mode = getIntArg(argv[1]);
-	if (mode < 0 || mode > 2) {
-		std::cout << "Wrong value for mode, only modes 0..2 are allowed";
+	if (mode < 0 || mode > 3) {
+		std::cout << "Wrong value for mode, only modes 0..3 are allowed";
 		return 2;
 	}
 	int time = getIntArg(argv[2]);
@@ -35,7 +35,8 @@ int main(int argc, char *argv[]) {
 	model.open(32000);
 	model.setParameters(time, level);
 	// This simulates warmup time for allpass buffers to fill with noise
-	for (int i = 0; i < 0; i++) {
+	DWORD warmupDelay = 10000 + GetTickCount() & 32767;
+	for (DWORD i = 0; i < warmupDelay; i++) {
 		float inLeft = 0.0f;
 		float inRight = 0.0f;
 		float outLeft, outRight;
