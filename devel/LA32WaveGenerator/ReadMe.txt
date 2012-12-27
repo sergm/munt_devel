@@ -1,0 +1,1 @@
+Accurate model of LA32 wave generator
