@@ -13,5 +13,6 @@
 #include <tchar.h>
 #include <windows.h>
 #include <math.h>
+#include <iostream>
 
 // TODO: reference additional headers your program requires here

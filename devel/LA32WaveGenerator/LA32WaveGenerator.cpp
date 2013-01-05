@@ -1,227 +1,228 @@
 #include "stdafx.h"
-#include "math.h"
 
-const static int MAX_SAMPLES = 32000;
-const static float SampleRate = 32000.f;
-const static float WGAMP = 15668.f;
-const static float FLOAT_PI = 3.141592654f;
-const static float PI2 = 6.283185307f;
-const static float FLOAT_LN_2 = logf(2.0f);
-const static float FLOAT_LN_2_R = 1 / FLOAT_LN_2;
-const static float RESAMPFACTOR = 512.0f;
-const static float RESAMPMAX = 1.75f;
-const static float RESAMPFADE = 0.1f;
-static _int16 carrier[MAX_SAMPLES];
-static _int16 modulator[MAX_SAMPLES];
+typedef _int8 Bit8s;
+typedef _int16 Bit16s;
+typedef _int32 Bit32s;
 
-int waveform, cutoff, pulseWidth, resonance;
-float freq;
+typedef unsigned _int8 Bit8u;
+typedef unsigned _int16 Bit16u;
+typedef unsigned _int32 Bit32u;
 
-unsigned short exp9[512];
-unsigned short logsin9[512];
+static const int MAX_SAMPLES = 64000;
+static const float FLOAT_PI = 3.141592654f;
+static const float FLOAT_LN_2 = logf(2.0f);
+static const float FLOAT_LN_2_R = 1 / FLOAT_LN_2;
+
+static Bit16u exp9[512];
+static Bit16u logsin9[512];
 
 static inline float EXP2F(float x) {
-	return expf(FLOAT_LN_2 * x);
+	return expf(x * FLOAT_LN_2);
 }
 
 static inline float LOG2F(float x) {
 	return logf(x) * FLOAT_LN_2_R;
 }
 
-void init_tables()
-{
-	// The LA32 chip contains an exponent table inside. The table contains fixed point values with 12-bit fractions.
-	// The actual table size is 512 rows. The 9 higher bits of a full 12-bit fixed point argument are used as a lookup address.
+void init_tables() {
+	// The LA32 chip contains an exponent table inside. The table contains 12-bit integer values.
+	// The actual table size is 512 rows. The 9 higher bits of the fractional part of the argument are used as a lookup address.
 	// To improve the precision of computations, the lower bits are supposed to be used for interpolation as the LA32 chip also
-	// contains another 512-row table with differences between the main table cells.
+	// contains another 512-row table with inverted differences between the main table values.
 	for (int i = 0; i < 512; i++) {
-		exp9[i] = unsigned int(8191.5f - EXP2F(13.0f + ~i / 512.0f));
+		exp9[i] = Bit16u(8191.5f - EXP2F(13.0f + ~i / 512.0f));
 	}
 
-	// There is a logarithmic sine table inside the LA32 chip. The table contains fixed point values with 13-bit fractions.
+	// There is a logarithmic sine table inside the LA32 chip. The table contains 13-bit integer values.
 	for (int i = 1; i < 512; i++) {
-		logsin9[i] = unsigned int(0.5f - LOG2F(sinf((i + 0.5f) / 1024.0f * FLOAT_PI)) * 1024.0f);
+		logsin9[i] = Bit16u(0.5f - LOG2F(sinf((i + 0.5f) / 1024.0f * FLOAT_PI)) * 1024.0f);
 	}
 
 	// The very first value is clamped to the maximum possible 13-bit integer
 	logsin9[0] = 8191;
 }
 
-int generate_samples(_int16 samples[])
-{
-	float wavePos = 0.f;
-	float sample = 0.f;
-	float resAmp = powf(RESAMPFACTOR, -(1.0f - resonance / 30.0f));
+/**
+ * LA32WaveGenerator is aimed to represent the exact model of LA32 wave generator.
+ * The output square wave is created by adding high / low linear segments in-between
+ * the rising and falling cosine segments. Basically, it’s very similar to the phase distortion synthesis.
+ * Behaviour of a true resonance filter is emulated by adding decaying sine wave.
+ * The beginning and the ending of the resonant sine is multiplied by a cosine window.
+ * To synthesise sawtooth waves, the resulting square wave is multiplied by synchronous cosine wave.
+ */
+class LA32WaveGenerator {
+	// True means the resulting square wave is to be multiplied by the synchronous cosine
+	bool sawtoothWaveform;
 
-	// Init internal values
-	int pulseWidthVal = int(2.56f * pulseWidth);
-	int cutoffVal = int(2.56f * cutoff);
+	// Logarithmic amp of the wave generator
+	Bit32u amp;
 
-	// Wave lenght in samples
-	float waveLen = SampleRate / freq;
+	// Logarithmic frequency of the resulting wave
+	Bit16u pitch;
 
-	// Anti-aliasing feature
-	if (waveLen < 4.0f) {
-		waveLen = 4.0f;
-	}
+	// Values in range [1..31]
+	// Value 1 correspong to the minimum resonance
+	Bit8u resonance;
 
-	// Init wavePos
-	float cosineLen = 0.5f * waveLen;
-	if (cutoffVal > 128) {
-		float ft = (cutoffVal - 128) / 127.0f;
-		cosineLen *= expf(-2.162823f * ft);
-	}
+	// Processed value in range [0..255]
+	// Values in range [0..128] have no effect and the resulting wave remains symmetrical
+	// Value 255 corresponds to the maximum possible asymmetrical wave
+	Bit8u pulseWidth;
 
-	// Anti-aliasing feature
-	if (cosineLen < 2.0f) {
-		cosineLen = 2.0f;
-		resAmp = 0.0f;
-	}
+	// Composed of the base cutoff in range [78..178] left-shifted by 18 bits and the modifier
+	Bit32u cutoffVal;
 
-	// Start playing at the middle of 1st cosine segment
-	wavePos = 0.5f * cosineLen;
+	Bit32u sineLen;
+	Bit32u highLen;
+	Bit32u lowLen;
+	Bit32u logsinIndex;
+	enum {
+		POSITIVE_RISING_SINE_SEGMENT,
+		POSITIVE_LINEAR_SEGMENT,
+		POSITIVE_FALLING_SINE_SEGMENT,
+		NEGATIVE_FALLING_SINE_SEGMENT,
+		NEGATIVE_LINEAR_SEGMENT,
+		NEGATIVE_RISING_SINE_SEGMENT
+	} phase;
 
-	// Ratio of negative segment to waveLen
-	float pulseLen = 0.5f;
-	if (pulseWidthVal > 128) {
-		// Formula determined from sample analysis.
-		float pt = 0.5f / 127.0f * (pulseWidthVal - 128);
-		pulseLen += (1.239f - pt) * pt;
-	}
-	pulseLen *= waveLen;
+	// Relative position within one wave period:
+	// 0             - the middle of the square wave rising cosine segment
+	// 262144 (2^18) - roundover - the full wave period
+	Bit32u wavePosition;
 
-	float lLen = pulseLen - cosineLen;
+	// The increment of wavePosition which is added when the current sample is completely processed and processing of the next sample begins.
+	// Derived from the current pitch value.
+	Bit32u sampleStep;
 
-	// Ignore pulsewidths too high for given freq
-	if (lLen < 0.0f) {
-		lLen = 0.0f;
-	}
+	struct LogSample {
+		Bit16u logValue;
+		enum {
+			POSITIVE,
+			NEGATIVE
+		} sign;
+	};
 
-	// Ignore pulsewidths too high for given freq and cutoff
-	float hLen = waveLen - lLen - 2 * cosineLen;
-	if (hLen < 0.0f) {
-		hLen = 0.0f;
-	}
+	void updateWaveGeneratorState();
+	LogSample nextSquareWaveLogSample();
+	LogSample nextResonanceWaveLogSample();
+	LogSample nextSawtoothCosineLogSample();
+	Bit16u interpolateExp(Bit16u fract);
+	Bit16s unlog(LogSample logSample);
+	void advancePosition();
 
-	// Correct resAmp for cutoff in range 50..60
-	if (cutoffVal < 158) {
-		resAmp *= (1.0f - (158 - cutoffVal) / 30.0f);
-	}
+public:
+	void init(bool sawtoothWaveform, Bit32u amp, Bit16u pitch, Bit32u cutoff, Bit8u pulseWidth, Bit8u resonance);
+	Bit16s nextSample();
+};
 
-	int t;
-	for(t = 0; t < MAX_SAMPLES; t++) {
-		// filtered square wave with 2 cosine waves on slopes
+void LA32WaveGenerator::init(bool sawtoothWaveform, Bit32u amp, Bit16u pitch, Bit32u cutoffVal, Bit8u pulseWidth, Bit8u resonance) {
+	this->sawtoothWaveform = sawtoothWaveform;
+	this->amp = amp;
+	this->pitch = pitch;
+	this->cutoffVal = cutoffVal;
+	this->pulseWidth = pulseWidth;
+	this->resonance = resonance;
 
-		// 1st cosine segment
-		if (wavePos < cosineLen) {
-			sample = -cosf(FLOAT_PI * wavePos / cosineLen);
-		} else
-
-		// high linear segment
-		if (wavePos < (cosineLen + hLen)) {
-			sample = 1.f;
-		} else
-
-		// 2nd cosine segment
-		if (wavePos < (2 * cosineLen + hLen)) {
-			sample = cosf(FLOAT_PI * (wavePos - (cosineLen + hLen)) / cosineLen);
-		} else {
-
-		// low linear segment
-			sample = -1.f;
-		}
-
-		if (cutoffVal < 128) {
-
-			// Attenuate samples below cutoff 50 another way
-			// Found by sample analysis
-			sample *= expf(0.693147181f * -0.048820569f * (128 - cutoffVal));
-		} else {
-
-			// Add resonance sine. Effective for cutoff > 50 only
-			float resSample = 1.0f;
-			float resAmpFade = 0.0f;
-
-			// wavePos relative to the middle of cosine segment
-			float relWavePos = wavePos - 0.5f * cosineLen;
-
-			// Always positive
-			if (relWavePos < 0.0f) {
-				relWavePos += waveLen;
-			}
-
-			// negative segments
-			if (!(relWavePos < (cosineLen + hLen))) {
-				resSample = -resSample;
-				relWavePos -= cosineLen + hLen;
-			}
-
-			// wavePos relative to the middle of cosine segment
-			// Negative for first half of cosine segment
-			float relWavePosC = wavePos - 0.5f * cosineLen;
-
-			if (!(wavePos < (cosineLen + hLen))) {
-				relWavePosC -= cosineLen + hLen;
-			}
-
-			// Resonance sine WG
-			resSample *= sinf(FLOAT_PI * relWavePos / cosineLen);
-
-			// Resonance sine amp
-			resAmpFade = RESAMPMAX - RESAMPFADE * (relWavePos / cosineLen);
-
-			// Fading to zero while in first half of cosine segment to avoid breaks in the wave
-			if (relWavePosC < 0.0f) {
-				resAmpFade *= -relWavePosC / (0.5f * cosineLen);
-			}
-
-			sample += resSample * resAmp * resAmpFade;
-		}
-
-		// sawtooth waves
-		if ((waveform & 1) != 0) {
-			sample *= cosf(PI2 * wavePos / waveLen);
-		}
-
-		wavePos++;
-		if (wavePos > waveLen)
-			wavePos -= waveLen;
-
-		// TVA emulation just for testings
-		sample *= (1.0f - 0.5f * resonance / 30.0f);
-
-		//	done
-		samples[t] = _int16(sample * WGAMP);
-	}
-	return t;
+	phase = POSITIVE_RISING_SINE_SEGMENT;
+	logsinIndex = 0;
 }
 
-int _tmain(int argc, _TCHAR* argv[])
-{
-	waveform = 0;
-	freq = 32.65f;
-	pulseWidth = 0;
-	cutoff = 65;
-	resonance = 30;
-	generate_samples(carrier);
+void LA32WaveGenerator::updateWaveGeneratorState() {
+	sineLen = 512;
+	highLen = 0;
+	lowLen = 0;
+	sampleStep = 1;
+}
 
-	waveform = 0;
-	freq = 5000.f;
-	pulseWidth = 100;
-	cutoff = 50;
-	resonance = 0;
-	generate_samples(modulator);
-
-	for(int t = 0; t < MAX_SAMPLES; t++) {
-//		carrier[t] = carrier[t] * modulator[t] >> 14;
+LA32WaveGenerator::LogSample LA32WaveGenerator::nextSquareWaveLogSample() {
+	LogSample logSample;
+	switch (phase)
+	{
+		case POSITIVE_RISING_SINE_SEGMENT:
+			logSample.logValue = logsin9[logsinIndex];
+			logSample.sign = LogSample::POSITIVE;
+			break;
+		case POSITIVE_LINEAR_SEGMENT:
+			logSample.logValue = 0;
+			logSample.sign = LogSample::POSITIVE;
+			break;
+		case POSITIVE_FALLING_SINE_SEGMENT:
+			logSample.logValue = logsin9[~logsinIndex & 511];
+			logSample.sign = LogSample::POSITIVE;
+			break;
+		case NEGATIVE_FALLING_SINE_SEGMENT:
+			logSample.logValue = logsin9[logsinIndex];
+			logSample.sign = LogSample::NEGATIVE;
+			break;
+		case NEGATIVE_LINEAR_SEGMENT:
+			logSample.logValue = 0;
+			logSample.sign = LogSample::NEGATIVE;
+			break;
+		case NEGATIVE_RISING_SINE_SEGMENT:
+			logSample.logValue = logsin9[~logsinIndex & 511];
+			logSample.sign = LogSample::NEGATIVE;
+			break;
 	}
+	logSample.logValue <<= 2;
+	return logSample;
+}
 
-	FILE *file;
-	file = fopen("Output.raw", "wb");
-	if (file == NULL) {
-//		std::cout << "File cannot be opened\n";
-		return 1;
+LA32WaveGenerator::LogSample LA32WaveGenerator::nextResonanceWaveLogSample() {
+	LogSample logSample;
+	return logSample;
+}
+
+LA32WaveGenerator::LogSample LA32WaveGenerator::nextSawtoothCosineLogSample() {
+	LogSample logSample;
+	return logSample;
+}
+
+Bit16u LA32WaveGenerator::interpolateExp(Bit16u fract) {
+	Bit16u expTabIndex = fract >> 3;
+	Bit16u extraBits = fract & 7;
+	Bit16u expTabEntry2 = 8191 - exp9[expTabIndex];
+	Bit16u expTabEntry1 = expTabIndex == 0 ? 8191 : (8191 - exp9[expTabIndex - 1]);
+	return expTabEntry1 + (((expTabEntry2 - expTabEntry1) * extraBits) >> 3);
+}
+
+Bit16s LA32WaveGenerator::unlog(LogSample logSample) {
+	//Bit16s sample = (Bit16s)EXP2F(13.0f - logSample.logValue / 1024.0f);
+	Bit32u intLogValue = logSample.logValue >> 12;
+	Bit32u fracLogValue = logSample.logValue & 4095;
+	Bit16s sample = interpolateExp(fracLogValue) >> intLogValue;
+	return logSample.sign == LogSample::POSITIVE ? sample : -sample;
+}
+
+void LA32WaveGenerator::advancePosition() {
+	logsinIndex += sampleStep;
+	if (logsinIndex > 511) {
+		if (phase < NEGATIVE_RISING_SINE_SEGMENT) {
+			++(*(Bit32u*)&phase);
+		} else {
+			phase = POSITIVE_RISING_SINE_SEGMENT;
+		}
+		logsinIndex &= 511;
 	}
-	fwrite(carrier, 2, MAX_SAMPLES, file);
-	fclose(file);
+}
+
+Bit16s LA32WaveGenerator::nextSample() {
+	updateWaveGeneratorState();
+	LogSample squareLogSample = nextSquareWaveLogSample();
+	//LogSample resonantLogSample = nextResonanceWaveLogSample();
+	//LogSample cosineLogSample = nextSawtoothCosineLogSample();
+	advancePosition();
+	return unlog(squareLogSample);// + cosineLogSample) + unlog(resonantLogSample + cosineLogSample);
+}
+
+int main() {
+	init_tables();
+
+	Bit16s carrier[MAX_SAMPLES];
+	Bit16s modulator[MAX_SAMPLES];
+
+	LA32WaveGenerator la32wg;
+	la32wg.init(false, 0, 0, 128 << 18, 128, 0);
+	for (int i = 0; i < MAX_SAMPLES; i++) {
+		std::cout << la32wg.nextSample() << std::endl;
+	}
 }
