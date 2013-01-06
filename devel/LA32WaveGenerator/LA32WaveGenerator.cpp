@@ -126,19 +126,47 @@ void LA32WaveGenerator::init(bool sawtoothWaveform, Bit32u amp, Bit16u pitch, Bi
 }
 
 void LA32WaveGenerator::updateWaveGeneratorState() {
-	highLen = 3100 << 9;
-	lowLen = 4400 << 9;
-	sampleStep = 512;
+	float waveLen = EXP2F(16.0f - pitch / 4096.0f);
+
+	// Init cosineLen
+	float cosineLen = 0.5f * waveLen;
+	if (cutoffVal > (128 << 18)) {
+		cosineLen *= EXP2F((cutoffVal * EXP2F(-18.0f) - 128.0f) / -16.0f);
+	}
+
+	// Ratio of positive segment to wave length
+	float pulseLen = 0.5f;
+	if (pulseWidth > 128) {
+		pulseLen = EXP2F((64 - pulseWidth) / 64.0f);
+	}
+	pulseLen *= waveLen;
+
+	float hLen = pulseLen - cosineLen;
+
+	// Ignore pulsewidths too high for given freq
+	if (hLen < 0.0f) {
+		hLen = 0.0f;
+	}
+
+	float lLen = waveLen - hLen - 2 * cosineLen;
+
+	sampleStep = Bit32u(EXP2F(19.0f) / cosineLen);
+	highLen = Bit32u(sampleStep * hLen);
+	lowLen = Bit32u(sampleStep * lLen);
 }
 
 void LA32WaveGenerator::advancePosition() {
 	squareWavePosition += sampleStep;
-	if (phase == POSITIVE_LINEAR_SEGMENT && squareWavePosition >= highLen) {
-		squareWavePosition -= highLen;
-		phase = POSITIVE_FALLING_SINE_SEGMENT;
-	} else if (phase == NEGATIVE_LINEAR_SEGMENT && squareWavePosition >= lowLen) {
-		squareWavePosition -= lowLen;
-		phase = NEGATIVE_RISING_SINE_SEGMENT;
+	if (phase == POSITIVE_LINEAR_SEGMENT) {
+		if (squareWavePosition >= highLen) {
+			squareWavePosition -= highLen;
+			phase = POSITIVE_FALLING_SINE_SEGMENT;
+		}
+	} else if (phase == NEGATIVE_LINEAR_SEGMENT) {
+		if (squareWavePosition >= lowLen) {
+			squareWavePosition -= lowLen;
+			phase = NEGATIVE_RISING_SINE_SEGMENT;
+		}
 	} else if (squareWavePosition >= (1 << 18)) {
 		squareWavePosition -= 1 << 18;
 		if (phase == NEGATIVE_RISING_SINE_SEGMENT) {
@@ -154,7 +182,7 @@ LA32WaveGenerator::LogSample LA32WaveGenerator::nextSquareWaveLogSample() {
 	LogSample logSample;
 	switch (phase) {
 		case POSITIVE_RISING_SINE_SEGMENT:
-			logSample.logValue = logsin9[squareWavePosition >> 9];
+			logSample.logValue = logsin9[(squareWavePosition >> 9) & 511];
 			logSample.sign = LogSample::POSITIVE;
 			break;
 		case POSITIVE_LINEAR_SEGMENT:
@@ -166,7 +194,7 @@ LA32WaveGenerator::LogSample LA32WaveGenerator::nextSquareWaveLogSample() {
 			logSample.sign = LogSample::POSITIVE;
 			break;
 		case NEGATIVE_FALLING_SINE_SEGMENT:
-			logSample.logValue = logsin9[squareWavePosition >> 9];
+			logSample.logValue = logsin9[(squareWavePosition >> 9) & 511];
 			logSample.sign = LogSample::NEGATIVE;
 			break;
 		case NEGATIVE_LINEAR_SEGMENT:
@@ -224,7 +252,7 @@ int main() {
 	Bit16s modulator[MAX_SAMPLES];
 
 	LA32WaveGenerator la32wg;
-	la32wg.init(false, 0, 0, 128 << 18, 128, 0);
+	la32wg.init(false, 0, 22000, 178 << 18, 255, 0);
 	for (int i = 0; i < MAX_SAMPLES; i++) {
 		std::cout << la32wg.nextSample() << std::endl;
 	}
