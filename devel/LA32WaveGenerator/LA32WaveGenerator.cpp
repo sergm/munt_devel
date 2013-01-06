@@ -72,10 +72,13 @@ class LA32WaveGenerator {
 	// Composed of the base cutoff in range [78..178] left-shifted by 18 bits and the modifier
 	Bit32u cutoffVal;
 
-	Bit32u sineLen;
+	// Relative position within a square wave phase:
+	// 0             - start of the phase
+	// 262144 (2^18) - corresponds to end of the sine phases. The length of linear phases may vary.
+	Bit32u squareWavePosition;
 	Bit32u highLen;
 	Bit32u lowLen;
-	Bit32u logsinIndex;
+
 	enum {
 		POSITIVE_RISING_SINE_SEGMENT,
 		POSITIVE_LINEAR_SEGMENT,
@@ -84,11 +87,6 @@ class LA32WaveGenerator {
 		NEGATIVE_LINEAR_SEGMENT,
 		NEGATIVE_RISING_SINE_SEGMENT
 	} phase;
-
-	// Relative position within one wave period:
-	// 0             - the middle of the square wave rising cosine segment
-	// 262144 (2^18) - roundover - the full wave period
-	Bit32u wavePosition;
 
 	// The increment of wavePosition which is added when the current sample is completely processed and processing of the next sample begins.
 	// Derived from the current pitch value.
@@ -124,22 +122,39 @@ void LA32WaveGenerator::init(bool sawtoothWaveform, Bit32u amp, Bit16u pitch, Bi
 	this->resonance = resonance;
 
 	phase = POSITIVE_RISING_SINE_SEGMENT;
-	logsinIndex = 0;
+	squareWavePosition = 0;
 }
 
 void LA32WaveGenerator::updateWaveGeneratorState() {
-	sineLen = 512;
-	highLen = 0;
-	lowLen = 0;
-	sampleStep = 1;
+	highLen = 3100 << 9;
+	lowLen = 4400 << 9;
+	sampleStep = 512;
+}
+
+void LA32WaveGenerator::advancePosition() {
+	squareWavePosition += sampleStep;
+	if (phase == POSITIVE_LINEAR_SEGMENT && squareWavePosition >= highLen) {
+		squareWavePosition -= highLen;
+		phase = POSITIVE_FALLING_SINE_SEGMENT;
+	} else if (phase == NEGATIVE_LINEAR_SEGMENT && squareWavePosition >= lowLen) {
+		squareWavePosition -= lowLen;
+		phase = NEGATIVE_RISING_SINE_SEGMENT;
+	} else if (squareWavePosition >= (1 << 18)) {
+		squareWavePosition -= 1 << 18;
+		if (phase == NEGATIVE_RISING_SINE_SEGMENT) {
+			phase = POSITIVE_RISING_SINE_SEGMENT;
+		} else {
+			// phase incrementing hack
+			++(*(int*)&phase);
+		}
+	}
 }
 
 LA32WaveGenerator::LogSample LA32WaveGenerator::nextSquareWaveLogSample() {
 	LogSample logSample;
-	switch (phase)
-	{
+	switch (phase) {
 		case POSITIVE_RISING_SINE_SEGMENT:
-			logSample.logValue = logsin9[logsinIndex];
+			logSample.logValue = logsin9[squareWavePosition >> 9];
 			logSample.sign = LogSample::POSITIVE;
 			break;
 		case POSITIVE_LINEAR_SEGMENT:
@@ -147,11 +162,11 @@ LA32WaveGenerator::LogSample LA32WaveGenerator::nextSquareWaveLogSample() {
 			logSample.sign = LogSample::POSITIVE;
 			break;
 		case POSITIVE_FALLING_SINE_SEGMENT:
-			logSample.logValue = logsin9[~logsinIndex & 511];
+			logSample.logValue = logsin9[~(squareWavePosition >> 9) & 511];
 			logSample.sign = LogSample::POSITIVE;
 			break;
 		case NEGATIVE_FALLING_SINE_SEGMENT:
-			logSample.logValue = logsin9[logsinIndex];
+			logSample.logValue = logsin9[squareWavePosition >> 9];
 			logSample.sign = LogSample::NEGATIVE;
 			break;
 		case NEGATIVE_LINEAR_SEGMENT:
@@ -159,7 +174,7 @@ LA32WaveGenerator::LogSample LA32WaveGenerator::nextSquareWaveLogSample() {
 			logSample.sign = LogSample::NEGATIVE;
 			break;
 		case NEGATIVE_RISING_SINE_SEGMENT:
-			logSample.logValue = logsin9[~logsinIndex & 511];
+			logSample.logValue = logsin9[~(squareWavePosition >> 9) & 511];
 			logSample.sign = LogSample::NEGATIVE;
 			break;
 	}
@@ -191,18 +206,6 @@ Bit16s LA32WaveGenerator::unlog(LogSample logSample) {
 	Bit32u fracLogValue = logSample.logValue & 4095;
 	Bit16s sample = interpolateExp(fracLogValue) >> intLogValue;
 	return logSample.sign == LogSample::POSITIVE ? sample : -sample;
-}
-
-void LA32WaveGenerator::advancePosition() {
-	logsinIndex += sampleStep;
-	if (logsinIndex > 511) {
-		if (phase < NEGATIVE_RISING_SINE_SEGMENT) {
-			++(*(Bit32u*)&phase);
-		} else {
-			phase = POSITIVE_RISING_SINE_SEGMENT;
-		}
-		logsinIndex &= 511;
-	}
 }
 
 Bit16s LA32WaveGenerator::nextSample() {
