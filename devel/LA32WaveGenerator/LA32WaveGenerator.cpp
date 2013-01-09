@@ -13,6 +13,8 @@ static const float FLOAT_PI = 3.141592654f;
 static const float FLOAT_LN_2 = logf(2.0f);
 static const float FLOAT_LN_2_R = 1 / FLOAT_LN_2;
 
+static const Bit32u MIDDLE_CUTOFF_VALUE = 128 << 18;
+
 static Bit16u exp9[512];
 static Bit16u logsin9[512];
 
@@ -126,33 +128,44 @@ void LA32WaveGenerator::init(bool sawtoothWaveform, Bit32u amp, Bit16u pitch, Bi
 }
 
 void LA32WaveGenerator::updateWaveGeneratorState() {
-	float waveLen = EXP2F(16.0f - pitch / 4096.0f);
+	Bit32u cosineLenFactor = 0;
+	if (cutoffVal > MIDDLE_CUTOFF_VALUE) {
+		cosineLenFactor = (cutoffVal - MIDDLE_CUTOFF_VALUE) >> 10;
+	}
 
-	// Init cosineLen
-	float cosineLen = 0.5f * waveLen;
-	if (cutoffVal > (128 << 18)) {
-		cosineLen *= EXP2F((cutoffVal * EXP2F(-18.0f) - 128.0f) / -16.0f);
+	// sampleStep = EXP2F(pitch / 4096. + cosineLenFactor / 4096. + 4)
+	{
+		Bit32u expArg = pitch + cosineLenFactor;
+		Bit32u expArgInt = (expArg >> 12);
+		sampleStep = interpolateExp(~expArg & 4095);
+		if (expArgInt < 8) {
+			sampleStep >>= 8 - expArgInt;
+		} else {
+			sampleStep <<= expArgInt - 8;
+		}
 	}
 
 	// Ratio of positive segment to wave length
-	float pulseLen = 0.5f;
+	Bit32u pulseLenFactor = 0;
 	if (pulseWidth > 128) {
-		pulseLen = EXP2F((64 - pulseWidth) / 64.0f);
-	}
-	pulseLen *= waveLen;
-
-	float hLen = pulseLen - cosineLen;
-
-	// Ignore pulsewidths too high for given freq
-	if (hLen < 0.0f) {
-		hLen = 0.0f;
+		pulseLenFactor = (pulseWidth - 128) << 6;
 	}
 
-	float lLen = waveLen - hLen - 2 * cosineLen;
+	// highLen = EXP2F(19 - pulseLenFactor / 4096. + cosineLenFactor / 4096.) - (2 << 18);
+	if (pulseLenFactor < cosineLenFactor) {
+		Bit32u expArg = cosineLenFactor - pulseLenFactor;
+		Bit32u expArgInt = (expArg >> 12);
+		highLen = interpolateExp(~expArg & 4095);
+		highLen <<= 7 + expArgInt;
+		highLen -= (2 << 18);
+	} else {
+		highLen = 0;
+	}
 
-	sampleStep = Bit32u(EXP2F(19.0f) / cosineLen);
-	highLen = Bit32u(sampleStep * hLen);
-	lowLen = Bit32u(sampleStep * lLen);
+	// lowLen = EXP2F(20 + cosineLenFactor / 4096.) - (4 << 18) - highLen;
+	lowLen = interpolateExp(~cosineLenFactor & 4095);
+	lowLen <<= 8 + (cosineLenFactor >> 12);
+	lowLen -= (4 << 18) + highLen;
 }
 
 void LA32WaveGenerator::advancePosition() {
@@ -252,7 +265,7 @@ int main() {
 	Bit16s modulator[MAX_SAMPLES];
 
 	LA32WaveGenerator la32wg;
-	la32wg.init(false, 0, 22000, 178 << 18, 255, 0);
+	la32wg.init(false, 0, 44835, 138 << 18, 212, 0);
 	for (int i = 0; i < MAX_SAMPLES; i++) {
 		std::cout << la32wg.nextSample() << std::endl;
 	}
