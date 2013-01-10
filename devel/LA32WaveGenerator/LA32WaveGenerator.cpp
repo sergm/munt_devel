@@ -81,6 +81,15 @@ class LA32WaveGenerator {
 	Bit32u highLen;
 	Bit32u lowLen;
 
+	// Relative position within a square wave phase:
+	// 0 - start of the corresponding positive or negative segment of the square wave
+	// The same increment sampleStep is used to indicate the current position
+	// since the length of the resonance wave is always equal to four square wave sine segments.
+	Bit32u resonanceSinePosition;
+
+	Bit32u resonanceAmp;
+	Bit32u resonanceAmpDecrement;
+
 	enum {
 		POSITIVE_RISING_SINE_SEGMENT,
 		POSITIVE_LINEAR_SEGMENT,
@@ -89,6 +98,13 @@ class LA32WaveGenerator {
 		NEGATIVE_LINEAR_SEGMENT,
 		NEGATIVE_RISING_SINE_SEGMENT
 	} phase;
+
+	enum {
+		POSITIVE_RISING_RESONANCE_SINE_SEGMENT,
+		POSITIVE_FALLING_RESONANCE_SINE_SEGMENT,
+		NEGATIVE_FALLING_RESONANCE_SINE_SEGMENT,
+		NEGATIVE_RISING_RESONANCE_SINE_SEGMENT
+	} resonancePhase;
 
 	// The increment of wavePosition which is added when the current sample is completely processed and processing of the next sample begins.
 	// Derived from the current pitch value.
@@ -125,6 +141,9 @@ void LA32WaveGenerator::init(bool sawtoothWaveform, Bit32u amp, Bit16u pitch, Bi
 
 	phase = POSITIVE_RISING_SINE_SEGMENT;
 	squareWavePosition = 0;
+	resonancePhase = POSITIVE_RISING_RESONANCE_SINE_SEGMENT;
+	resonanceSinePosition = 0;
+	resonanceAmp = 1 << 28;
 }
 
 void LA32WaveGenerator::updateWaveGeneratorState() {
@@ -143,6 +162,10 @@ void LA32WaveGenerator::updateWaveGeneratorState() {
 		} else {
 			sampleStep <<= expArgInt - 8;
 		}
+
+		// Resonance sine amp
+		static const Bit32u resAmpDecrementFactor[] = {31, 16, 12, 8, 5, 3, 2, 1};
+		resonanceAmpDecrement = resAmpDecrementFactor[resonance >> 2] * sampleStep;
 	}
 
 	// Ratio of positive segment to wave length
@@ -170,6 +193,12 @@ void LA32WaveGenerator::updateWaveGeneratorState() {
 
 void LA32WaveGenerator::advancePosition() {
 	squareWavePosition += sampleStep;
+	resonanceSinePosition += sampleStep;
+	if (resonanceAmp < resonanceAmpDecrement) {
+		resonanceAmp = 0;
+	} else {
+		resonanceAmp -= resonanceAmpDecrement;
+	}
 	if (phase == POSITIVE_LINEAR_SEGMENT) {
 		if (squareWavePosition >= highLen) {
 			squareWavePosition -= highLen;
@@ -184,10 +213,23 @@ void LA32WaveGenerator::advancePosition() {
 		squareWavePosition -= 1 << 18;
 		if (phase == NEGATIVE_RISING_SINE_SEGMENT) {
 			phase = POSITIVE_RISING_SINE_SEGMENT;
+			resonancePhase = POSITIVE_RISING_RESONANCE_SINE_SEGMENT;
+			resonanceSinePosition = squareWavePosition;
+			resonanceAmp = 1 << 28;
 		} else {
 			// phase incrementing hack
 			++(*(int*)&phase);
+			if (phase == NEGATIVE_FALLING_SINE_SEGMENT) {
+				resonancePhase = NEGATIVE_FALLING_RESONANCE_SINE_SEGMENT;
+				resonanceSinePosition = squareWavePosition;
+				resonanceAmp = 1 << 28;
+			}
 		}
+	}
+	if (resonanceSinePosition >= (1 << 18)) {
+		resonanceSinePosition -= 1 << 18;
+		// resonancePhase incrementing hack
+		*(int*)&resonancePhase = (resonancePhase + 1) & 3;
 	}
 }
 
@@ -196,40 +238,42 @@ LA32WaveGenerator::LogSample LA32WaveGenerator::nextSquareWaveLogSample() {
 	switch (phase) {
 		case POSITIVE_RISING_SINE_SEGMENT:
 			logSample.logValue = logsin9[(squareWavePosition >> 9) & 511];
-			logSample.sign = LogSample::POSITIVE;
 			break;
 		case POSITIVE_LINEAR_SEGMENT:
 			logSample.logValue = 0;
-			logSample.sign = LogSample::POSITIVE;
 			break;
 		case POSITIVE_FALLING_SINE_SEGMENT:
 			logSample.logValue = logsin9[~(squareWavePosition >> 9) & 511];
-			logSample.sign = LogSample::POSITIVE;
 			break;
 		case NEGATIVE_FALLING_SINE_SEGMENT:
 			logSample.logValue = logsin9[(squareWavePosition >> 9) & 511];
-			logSample.sign = LogSample::NEGATIVE;
 			break;
 		case NEGATIVE_LINEAR_SEGMENT:
 			logSample.logValue = 0;
-			logSample.sign = LogSample::NEGATIVE;
 			break;
 		case NEGATIVE_RISING_SINE_SEGMENT:
 			logSample.logValue = logsin9[~(squareWavePosition >> 9) & 511];
-			logSample.sign = LogSample::NEGATIVE;
 			break;
 	}
 	logSample.logValue <<= 2;
+	logSample.sign = phase < NEGATIVE_FALLING_SINE_SEGMENT ? LogSample::POSITIVE : LogSample::NEGATIVE;
 	return logSample;
 }
 
 LA32WaveGenerator::LogSample LA32WaveGenerator::nextResonanceWaveLogSample() {
 	LogSample logSample;
+	if (resonancePhase == POSITIVE_FALLING_RESONANCE_SINE_SEGMENT || resonancePhase == NEGATIVE_RISING_RESONANCE_SINE_SEGMENT) {
+		logSample.logValue = logsin9[~(resonanceSinePosition >> 9) & 511];
+	} else {
+		logSample.logValue = logsin9[(resonanceSinePosition >> 9) & 511];
+	}
+	logSample.logValue <<= 2;
+	logSample.sign = resonancePhase < NEGATIVE_FALLING_RESONANCE_SINE_SEGMENT ? LogSample::POSITIVE : LogSample::NEGATIVE;
 	return logSample;
 }
 
 LA32WaveGenerator::LogSample LA32WaveGenerator::nextSawtoothCosineLogSample() {
-	LogSample logSample;
+	LogSample logSample={0};
 	return logSample;
 }
 
@@ -252,20 +296,23 @@ Bit16s LA32WaveGenerator::unlog(LogSample logSample) {
 Bit16s LA32WaveGenerator::nextSample() {
 	updateWaveGeneratorState();
 	LogSample squareLogSample = nextSquareWaveLogSample();
-	//LogSample resonantLogSample = nextResonanceWaveLogSample();
+	LogSample resonanceLogSample = nextResonanceWaveLogSample();
 	//LogSample cosineLogSample = nextSawtoothCosineLogSample();
+	float resAmp = EXP2F(resonanceAmp / float(1 << 23) - 32.0f);
 	advancePosition();
-	return unlog(squareLogSample);// + cosineLogSample) + unlog(resonantLogSample + cosineLogSample);
+	std::cout << unlog(squareLogSample) << "; " << Bit32s(resAmp * unlog(resonanceLogSample)) << "; ";
+	return unlog(squareLogSample) + unlog(resonanceLogSample);
+	//return unlog(squareLogSample + cosineLogSample) + unlog(resonanceLogSample + cosineLogSample);
 }
 
 int main() {
 	init_tables();
 
-	Bit16s carrier[MAX_SAMPLES];
-	Bit16s modulator[MAX_SAMPLES];
+	//Bit16s carrier[MAX_SAMPLES];
+	//Bit16s modulator[MAX_SAMPLES];
 
 	LA32WaveGenerator la32wg;
-	la32wg.init(false, 0, 44835, 138 << 18, 212, 0);
+	la32wg.init(false, 0, 24835, 178 << 18, 125, 1);
 	for (int i = 0; i < MAX_SAMPLES; i++) {
 		std::cout << la32wg.nextSample() << std::endl;
 	}
