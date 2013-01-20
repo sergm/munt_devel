@@ -257,10 +257,11 @@ LA32WaveGenerator::LogSample LA32WaveGenerator::nextResonanceWaveLogSample() {
 		logSampleValue = logsin9[(resonanceSinePosition >> 9) & 511];
 	}
 	logSampleValue <<= 2;
-	logSampleValue += (amp >> 10);
+	logSampleValue += amp >> 10;
 
 	static const Bit32u resAmpDecrementFactor[] = {31, 16, 12, 8, 5, 3, 2, 1};
 	logSampleValue += resonanceAmpSubtraction + ((resonanceSinePosition * resAmpDecrementFactor[resonance >> 2]) >> 10);
+	logSampleValue -= 1 << 12;
 
 	LogSample logSample;
 	logSample.logValue = logSampleValue < 65536 ? logSampleValue : 65535;
@@ -295,8 +296,8 @@ Bit16s LA32WaveGenerator::nextSample() {
 	LogSample resonanceLogSample = nextResonanceWaveLogSample();
 	//LogSample cosineLogSample = nextSawtoothCosineLogSample();
 	advancePosition();
-	std::cout << unlog(squareLogSample) << "; " << (unlog(resonanceLogSample) << 1) << "; ";
-	return unlog(squareLogSample) + (unlog(resonanceLogSample) << 1);
+	std::cout << unlog(squareLogSample) << "; " << unlog(resonanceLogSample) << "; ";
+	return unlog(squareLogSample) + unlog(resonanceLogSample);
 	//return unlog(squareLogSample + cosineLogSample) + unlog(resonanceLogSample + cosineLogSample);
 }
 
@@ -307,7 +308,7 @@ int main() {
 	//Bit16s modulator[MAX_SAMPLES];
 
 	LA32WaveGenerator la32wg;
-	la32wg.init(false, (4000 + 264) << 10, 24835, 178 << 18, 125, 31);
+	la32wg.init(false, (264) << 10, 24835, 178 << 18, 125, 1);
 	for (int i = 0; i < MAX_SAMPLES; i++) {
 		std::cout << la32wg.nextSample() << std::endl;
 	}
