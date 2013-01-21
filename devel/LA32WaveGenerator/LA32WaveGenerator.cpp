@@ -259,9 +259,10 @@ LA32WaveGenerator::LogSample LA32WaveGenerator::nextResonanceWaveLogSample() {
 	logSampleValue <<= 2;
 	logSampleValue += amp >> 10;
 
-	static const Bit32u resAmpDecrementFactor[] = {31, 16, 12, 8, 5, 3, 2, 1};
-	Bit32u resonanceSineDecayPosition = phase < NEGATIVE_FALLING_SINE_SEGMENT ? resonanceSinePosition : resonanceSinePosition + (resonanceSinePosition >> 2);
-	logSampleValue += resonanceAmpSubtraction + ((resonanceSineDecayPosition * resAmpDecrementFactor[resonance >> 2]) >> 10);
+	static const Bit32u resAmpDecrementFactorT[] = {31, 16, 12, 8, 5, 3, 2, 1};
+	Bit32u resAmpDecrementFactor = resAmpDecrementFactorT[resonance >> 2] << 2;
+	resAmpDecrementFactor = phase < NEGATIVE_FALLING_SINE_SEGMENT ? resAmpDecrementFactor : resAmpDecrementFactor + 1;
+	logSampleValue += resonanceAmpSubtraction + ((resonanceSinePosition * resAmpDecrementFactor) >> 12);
 	logSampleValue -= 1 << 12;
 
 	LogSample logSample;
