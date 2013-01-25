@@ -118,12 +118,15 @@ class LA32WaveGenerator {
 	};
 
 	void updateWaveGeneratorState();
+	void advancePosition();
+	Bit32u transientResonanceWindow();
+
 	LogSample nextSquareWaveLogSample();
 	LogSample nextResonanceWaveLogSample();
 	LogSample nextSawtoothCosineLogSample();
+
 	Bit16u interpolateExp(Bit16u fract);
 	Bit16s unlog(LogSample logSample);
-	void advancePosition();
 
 public:
 	void init(bool sawtoothWaveform, Bit32u amp, Bit16u pitch, Bit32u cutoff, Bit8u pulseWidth, Bit8u resonance);
@@ -218,6 +221,16 @@ void LA32WaveGenerator::advancePosition() {
 	*(int*)&resonancePhase = ((resonanceSinePosition >> 18) + (phase > POSITIVE_FALLING_SINE_SEGMENT ? 2 : 0)) & 3;
 }
 
+Bit32u LA32WaveGenerator::transientResonanceWindow() {
+	if (phase == POSITIVE_RISING_SINE_SEGMENT || phase == NEGATIVE_FALLING_SINE_SEGMENT) {
+		// The window is synchronous sine here
+		return logsin9[(squareWavePosition >> 9) & 511] << 2;
+	} else if (phase == POSITIVE_FALLING_SINE_SEGMENT || phase == NEGATIVE_RISING_SINE_SEGMENT) {
+		// The window is double-phase sine with offset here
+	}
+	return 0;
+}
+
 LA32WaveGenerator::LogSample LA32WaveGenerator::nextSquareWaveLogSample() {
 	Bit32u logSampleValue;
 	switch (phase) {
@@ -259,10 +272,12 @@ LA32WaveGenerator::LogSample LA32WaveGenerator::nextResonanceWaveLogSample() {
 	logSampleValue <<= 2;
 	logSampleValue += amp >> 10;
 
-	static const Bit32u resAmpDecrementFactorT[] = {31, 16, 12, 8, 5, 3, 2, 1};
-	Bit32u resAmpDecrementFactor = resAmpDecrementFactorT[resonance >> 2] << 2;
+	static const Bit32u resAmpDecrementFactorTable[] = {31, 16, 12, 8, 5, 3, 2, 1};
+	Bit32u resAmpDecrementFactor = resAmpDecrementFactorTable[resonance >> 2] << 2;
 	resAmpDecrementFactor = phase < NEGATIVE_FALLING_SINE_SEGMENT ? resAmpDecrementFactor : resAmpDecrementFactor + 1;
+	// Unsure about resonanceSinePosition here. It's possible that dedicated counter & decrement are used. Although, cutoff is finely ramped, so maybe not.
 	logSampleValue += resonanceAmpSubtraction + ((resonanceSinePosition * resAmpDecrementFactor) >> 12);
+	logSampleValue += transientResonanceWindow();
 	logSampleValue -= 1 << 12;
 
 	LogSample logSample;
@@ -310,7 +325,7 @@ int main() {
 	//Bit16s modulator[MAX_SAMPLES];
 
 	LA32WaveGenerator la32wg;
-	la32wg.init(false, (264) << 10, 24835, 178 << 18, 125, 1);
+	la32wg.init(false, (264 + ((31 >> 1) << 8)) << 10, 24835, 178 << 18, 255, 31);
 	for (int i = 0; i < MAX_SAMPLES; i++) {
 		std::cout << la32wg.nextSample() << std::endl;
 	}
