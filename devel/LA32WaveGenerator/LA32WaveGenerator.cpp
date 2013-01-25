@@ -119,7 +119,6 @@ class LA32WaveGenerator {
 
 	void updateWaveGeneratorState();
 	void advancePosition();
-	Bit32u transientResonanceWindow();
 
 	LogSample nextSquareWaveLogSample();
 	LogSample nextResonanceWaveLogSample();
@@ -221,16 +220,6 @@ void LA32WaveGenerator::advancePosition() {
 	*(int*)&resonancePhase = ((resonanceSinePosition >> 18) + (phase > POSITIVE_FALLING_SINE_SEGMENT ? 2 : 0)) & 3;
 }
 
-Bit32u LA32WaveGenerator::transientResonanceWindow() {
-	if (phase == POSITIVE_RISING_SINE_SEGMENT || phase == NEGATIVE_FALLING_SINE_SEGMENT) {
-		// The window is synchronous sine here
-		return logsin9[(squareWavePosition >> 9) & 511] << 2;
-	} else if (phase == POSITIVE_FALLING_SINE_SEGMENT || phase == NEGATIVE_RISING_SINE_SEGMENT) {
-		// The window is double-phase sine with offset here
-	}
-	return 0;
-}
-
 LA32WaveGenerator::LogSample LA32WaveGenerator::nextSquareWaveLogSample() {
 	Bit32u logSampleValue;
 	switch (phase) {
@@ -277,7 +266,15 @@ LA32WaveGenerator::LogSample LA32WaveGenerator::nextResonanceWaveLogSample() {
 	resAmpDecrementFactor = phase < NEGATIVE_FALLING_SINE_SEGMENT ? resAmpDecrementFactor : resAmpDecrementFactor + 1;
 	// Unsure about resonanceSinePosition here. It's possible that dedicated counter & decrement are used. Although, cutoff is finely ramped, so maybe not.
 	logSampleValue += resonanceAmpSubtraction + ((resonanceSinePosition * resAmpDecrementFactor) >> 12);
-	logSampleValue += transientResonanceWindow();
+
+	if (phase == POSITIVE_RISING_SINE_SEGMENT || phase == NEGATIVE_FALLING_SINE_SEGMENT) {
+		// The window is synchronous sine here
+		logSampleValue += logsin9[(squareWavePosition >> 9) & 511] << 2;
+	} else if (phase == POSITIVE_FALLING_SINE_SEGMENT || phase == NEGATIVE_RISING_SINE_SEGMENT) {
+		// The window is synchronous square sine here
+		logSampleValue += logsin9[~(squareWavePosition >> 9) & 511] << 3;
+	}
+
 	logSampleValue -= 1 << 12;
 
 	LogSample logSample;
