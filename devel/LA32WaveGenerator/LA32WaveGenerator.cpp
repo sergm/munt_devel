@@ -14,6 +14,7 @@ static const float FLOAT_LN_2 = logf(2.0f);
 static const float FLOAT_LN_2_R = 1 / FLOAT_LN_2;
 
 static const Bit32u MIDDLE_CUTOFF_VALUE = 128 << 18;
+static const Bit32u RESONANCE_DECAY_THRESHOLD_CUTOFF_VALUE = 144 << 18;
 
 static Bit16u exp9[512];
 static Bit16u logsin9[512];
@@ -26,7 +27,7 @@ static inline float LOG2F(float x) {
 	return logf(x) * FLOAT_LN_2_R;
 }
 
-void init_tables() {
+static void init_tables() {
 	// The LA32 chip contains an exponent table inside. The table contains 12-bit integer values.
 	// The actual table size is 512 rows. The 9 higher bits of the fractional part of the argument are used as a lookup address.
 	// To improve the precision of computations, the lower bits are supposed to be used for interpolation as the LA32 chip also
@@ -71,7 +72,7 @@ class LA32WaveGenerator {
 	// Value 255 corresponds to the maximum possible asymmetrical wave
 	Bit8u pulseWidth;
 
-	// Composed of the base cutoff in range [78..178] left-shifted by 18 bits and the modifier
+	// Composed of the base cutoff in range [78..178] left-shifted by 18 bits and the TVF modifier
 	Bit32u cutoffVal;
 
 	// Relative position within a square wave phase:
@@ -264,12 +265,14 @@ LA32WaveGenerator::LogSample LA32WaveGenerator::nextResonanceWaveLogSample() {
 	logSampleValue <<= 2;
 	logSampleValue += amp >> 10;
 
+	// The decaying speed of the resonance sine is found a bit different for the positive and the negative segments
 	static const Bit32u resAmpDecrementFactorTable[] = {31, 16, 12, 8, 5, 3, 2, 1};
 	Bit32u resAmpDecrementFactor = resAmpDecrementFactorTable[resonance >> 2] << 2;
 	resAmpDecrementFactor = phase < NEGATIVE_FALLING_SINE_SEGMENT ? resAmpDecrementFactor : resAmpDecrementFactor + 1;
 	// Unsure about resonanceSinePosition here. It's possible that dedicated counter & decrement are used. Although, cutoff is finely ramped, so maybe not.
 	logSampleValue += resonanceAmpSubtraction + ((resonanceSinePosition * resAmpDecrementFactor) >> 12);
 
+	// To ensure the output wave has no breaks, two different windows are appied to the beginning and the ending of the resonance sine segment
 	if (phase == POSITIVE_RISING_SINE_SEGMENT || phase == NEGATIVE_FALLING_SINE_SEGMENT) {
 		// The window is synchronous sine here
 		logSampleValue += logsin9[(squareWavePosition >> 9) & 511] << 2;
@@ -278,6 +281,17 @@ LA32WaveGenerator::LogSample LA32WaveGenerator::nextResonanceWaveLogSample() {
 		logSampleValue += logsin9[~(squareWavePosition >> 9) & 511] << 3;
 	}
 
+	if (cutoffVal < MIDDLE_CUTOFF_VALUE) {
+		// For the cutoff values below the cutoff middle point, it seems the amp of the resonance wave is expotentially decayed
+		// Though, not 100% accurate
+		logSampleValue += 32767 + ((MIDDLE_CUTOFF_VALUE - cutoffVal) >> 9);
+	} else if (cutoffVal < RESONANCE_DECAY_THRESHOLD_CUTOFF_VALUE) {
+		// For the cutoff values below this point, the amp of the resonance wave is sinusoidally decayed
+		Bit32u sineIx = (cutoffVal - MIDDLE_CUTOFF_VALUE) >> 13;
+		logSampleValue += logsin9[sineIx] << 2;
+	}
+
+	// After all the amp decrements are added, it should be safe now to adjust the amp of the resonance wave to what we see on captures
 	logSampleValue -= 1 << 12;
 
 	LogSample logSample;
@@ -321,18 +335,14 @@ Bit16s LA32WaveGenerator::nextSample() {
 int main() {
 	init_tables();
 
-	//Bit16s carrier[MAX_SAMPLES];
-	//Bit16s modulator[MAX_SAMPLES];
-
-	LA32WaveGenerator la32wg;
-
-	int cutoff = 0;
+	int cutoff = 60;
 	cutoff = (78 + cutoff) << 18;
-	int pw = 100;
+	int pw = 50;
 	pw = pw * 255 / 100;
 	int resonance = 30;
 	resonance++;
 
+	LA32WaveGenerator la32wg;
 	la32wg.init(false, (264 + ((resonance >> 1) << 8)) << 10, 24835, cutoff, pw, resonance);
 	for (int i = 0; i < MAX_SAMPLES; i++) {
 		std::cout << la32wg.nextSample() << std::endl;
