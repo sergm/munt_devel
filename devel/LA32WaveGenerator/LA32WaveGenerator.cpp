@@ -283,8 +283,7 @@ LA32WaveGenerator::LogSample LA32WaveGenerator::nextResonanceWaveLogSample() {
 
 	if (cutoffVal < MIDDLE_CUTOFF_VALUE) {
 		// For the cutoff values below the cutoff middle point, it seems the amp of the resonance wave is expotentially decayed
-		// Though, not 100% accurate
-		logSampleValue += 32767 + ((MIDDLE_CUTOFF_VALUE - cutoffVal) >> 9);
+		logSampleValue += 31743 + ((MIDDLE_CUTOFF_VALUE - cutoffVal) >> 9);
 	} else if (cutoffVal < RESONANCE_DECAY_THRESHOLD_CUTOFF_VALUE) {
 		// For the cutoff values below this point, the amp of the resonance wave is sinusoidally decayed
 		Bit32u sineIx = (cutoffVal - MIDDLE_CUTOFF_VALUE) >> 13;
