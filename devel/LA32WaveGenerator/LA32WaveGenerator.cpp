@@ -322,7 +322,15 @@ int main() {
 	//Bit16s modulator[MAX_SAMPLES];
 
 	LA32WaveGenerator la32wg;
-	la32wg.init(false, (264 + ((31 >> 1) << 8)) << 10, 24835, 178 << 18, 255, 31);
+
+	int cutoff = 0;
+	cutoff = (78 + cutoff) << 18;
+	int pw = 100;
+	pw = pw * 255 / 100;
+	int resonance = 30;
+	resonance++;
+
+	la32wg.init(false, (264 + ((resonance >> 1) << 8)) << 10, 24835, cutoff, pw, resonance);
 	for (int i = 0; i < MAX_SAMPLES; i++) {
 		std::cout << la32wg.nextSample() << std::endl;
 	}
