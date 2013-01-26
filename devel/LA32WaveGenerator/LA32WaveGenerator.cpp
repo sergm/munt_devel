@@ -244,6 +244,9 @@ LA32WaveGenerator::LogSample LA32WaveGenerator::nextSquareWaveLogSample() {
 	}
 	logSampleValue <<= 2;
 	logSampleValue += amp >> 10;
+	if (cutoffVal < MIDDLE_CUTOFF_VALUE) {
+		logSampleValue += (MIDDLE_CUTOFF_VALUE - cutoffVal) >> 9;
+	}
 
 	LogSample logSample;
 	logSample.logValue = logSampleValue < 65536 ? logSampleValue : 65535;
