@@ -27,23 +27,34 @@ static inline float LOG2F(float x) {
 	return logf(x) * FLOAT_LN_2_R;
 }
 
-static void init_tables() {
-	// The LA32 chip contains an exponent table inside. The table contains 12-bit integer values.
-	// The actual table size is 512 rows. The 9 higher bits of the fractional part of the argument are used as a lookup address.
-	// To improve the precision of computations, the lower bits are supposed to be used for interpolation as the LA32 chip also
-	// contains another 512-row table with inverted differences between the main table values.
-	for (int i = 0; i < 512; i++) {
-		exp9[i] = Bit16u(8191.5f - EXP2F(13.0f + ~i / 512.0f));
-	}
+/**
+ * LA32 performs wave generation in the log-space that allows replacing multiplications by cheap additions
+ * It's assumed that only low-bit multiplications occur in a few places which are unavoidable like these:
+ * - interpolation of exponent table (obvious, a delta value has 4 bits)
+ * - computation of resonance amp decay envelope (the table contains values with 1-2 "1" bits except the very first value 31 but this case can be found using inversion)
+ * - interpolation of PCM samples (obvious, the wave position counter is in the linear space, there is no log() table in the chip)
+ * and it seems to be implemented in the same way as in the Boss chip, i.e. right shifted additions which involved noticeable precision loss
+ * Subtraction is supposed to be replaced by simple inversion
+ * As the logarithmic sine is always negative, all the logarithmic values are treated as decrements
+ */
+struct LogSample {
+	// 16-bit fixed point value, includes 12-bit fractional part
+	// 4-bit integer part allows to present any 16-bit sample in the log-space
+	// Obviously, the log value doesn't contain the sign of the resulting sample
+	Bit16u logValue;
+	enum {
+		POSITIVE,
+		NEGATIVE
+	} sign;
+};
 
-	// There is a logarithmic sine table inside the LA32 chip. The table contains 13-bit integer values.
-	for (int i = 1; i < 512; i++) {
-		logsin9[i] = Bit16u(0.5f - LOG2F(sinf((i + 0.5f) / 1024.0f * FLOAT_PI)) * 1024.0f);
-	}
-
-	// The very first value is clamped to the maximum possible 13-bit integer
-	logsin9[0] = 8191;
-}
+class LA32Utilites {
+public:
+	static void init_tables();
+	static Bit16u interpolateExp(Bit16u fract);
+	static Bit16s unlog(LogSample logSample);
+	static LogSample addLogSamples(LogSample sample1, LogSample sample2);
+};
 
 /**
  * LA32WaveGenerator is aimed to represent the exact model of LA32 wave generator.
@@ -54,27 +65,6 @@ static void init_tables() {
  * To synthesise sawtooth waves, the resulting square wave is multiplied by synchronous cosine wave.
  */
 class LA32WaveGenerator {
-	/**
-	 * Wave generation is performed in the log-space that allows replacing multiplications by cheap additions
-	 * It's assumed that only low-bit multiplications occur in a few places which are unavoidable like these:
-	 * - interpolation of exponent table (obvious, a delta value has 4 bits)
-	 * - computation of resonance amp decay envelope (the table contains values with 1-2 "1" bits except the very first value 31 but this case can be found using inversion)
-	 * - interpolation of PCM samples (obvious, the wave position counter is in the linear space, there is no log() table in the chip)
-	 * and it seems to be implemented in the same way as in the Boss chip, i.e. right shifted additions which involved noticeable precision loss
-	 * Subtraction is supposed to be replaced by simple inversion
-	 * As the logarithmic sine is always negative, all the logarithmic values are treated as decrements
-	 */
-	struct LogSample {
-		// 16-bit fixed point value, includes 12-bit fractional part
-		// 4-bit integer part allows to present any 16-bit sample in the log-space
-		// Obviously, the log value doesn't contain the sign of the resulting sample
-		Bit16u logValue;
-		enum {
-			POSITIVE,
-			NEGATIVE
-		} sign;
-	};
-
 	//***************************************************************************
 	//  The local copy of partial parameters below
 	//***************************************************************************
@@ -156,6 +146,10 @@ class LA32WaveGenerator {
 	// Depends on the current pitch value
 	Bit32u sawtoothCosineStep;
 
+	// Resulting log-space samples of the square and resonance waves
+	LogSample squareLogSample;
+	LogSample resonanceLogSample;
+
 	//***************************************************************************
 	// Internal methods below
 	//***************************************************************************
@@ -167,20 +161,76 @@ class LA32WaveGenerator {
 	LogSample nextResonanceWaveLogSample();
 	LogSample nextSawtoothCosineLogSample();
 
-	Bit16u interpolateExp(Bit16u fract);
-	Bit16s unlog(LogSample logSample);
-	LogSample addLogSamples(LogSample sample1, LogSample sample2);
-
 public:
 	void init(bool sawtoothWaveform, Bit8u pulseWidth, Bit8u resonance);
-	Bit16s nextSample(Bit32u amp, Bit16u pitch, Bit32u cutoff);
+	void generateNextSample(Bit32u amp, Bit16u pitch, Bit32u cutoff);
+	LogSample getSquareLogSample();
+	LogSample getResonanceLogSample();
 };
+
+// LA32PartialPair contains a structure of two partials being mixed / ring modulated
+class LA32PartialPair {
+	LA32WaveGenerator master;
+	LA32WaveGenerator slave;
+	bool ringModulated;
+	bool mixed;
+
+public:
+	void init(bool ringModulated, bool mixed);
+	void initMaster(bool sawtoothWaveform, Bit8u pulseWidth, Bit8u resonance);
+	void initSlave(bool sawtoothWaveform, Bit8u pulseWidth, Bit8u resonance);
+	void generateNextMasterSample(Bit32u amp, Bit16u pitch, Bit32u cutoff);
+	void generateNextSlaveSample(Bit32u amp, Bit16u pitch, Bit32u cutoff);
+	Bit16s nextOutSample();
+};
+
+void LA32Utilites::init_tables() {
+	// The LA32 chip contains an exponent table inside. The table contains 12-bit integer values.
+	// The actual table size is 512 rows. The 9 higher bits of the fractional part of the argument are used as a lookup address.
+	// To improve the precision of computations, the lower bits are supposed to be used for interpolation as the LA32 chip also
+	// contains another 512-row table with inverted differences between the main table values.
+	for (int i = 0; i < 512; i++) {
+		exp9[i] = Bit16u(8191.5f - EXP2F(13.0f + ~i / 512.0f));
+	}
+
+	// There is a logarithmic sine table inside the LA32 chip. The table contains 13-bit integer values.
+	for (int i = 1; i < 512; i++) {
+		logsin9[i] = Bit16u(0.5f - LOG2F(sinf((i + 0.5f) / 1024.0f * FLOAT_PI)) * 1024.0f);
+	}
+
+	// The very first value is clamped to the maximum possible 13-bit integer
+	logsin9[0] = 8191;
+}
+
+Bit16u LA32Utilites::interpolateExp(Bit16u fract) {
+	Bit16u expTabIndex = fract >> 3;
+	Bit16u extraBits = fract & 7;
+	Bit16u expTabEntry2 = 8191 - exp9[expTabIndex];
+	Bit16u expTabEntry1 = expTabIndex == 0 ? 8191 : (8191 - exp9[expTabIndex - 1]);
+	return expTabEntry1 + (((expTabEntry2 - expTabEntry1) * extraBits) >> 3);
+}
+
+Bit16s LA32Utilites::unlog(LogSample logSample) {
+	//Bit16s sample = (Bit16s)EXP2F(13.0f - logSample.logValue / 1024.0f);
+	Bit32u intLogValue = logSample.logValue >> 12;
+	Bit32u fracLogValue = logSample.logValue & 4095;
+	Bit16s sample = interpolateExp(fracLogValue) >> intLogValue;
+	return logSample.sign == LogSample::POSITIVE ? sample : -sample;
+}
+
+LogSample LA32Utilites::addLogSamples(LogSample sample1, LogSample sample2) {
+	Bit32u logSampleValue = sample1.logValue + sample2.logValue;
+	LogSample logSample;
+	logSample.logValue = logSampleValue < 65536 ? logSampleValue : 65535;
+	logSample.sign = sample1.sign == sample2.sign ? LogSample::POSITIVE : LogSample::NEGATIVE;
+	return logSample;
+}
 
 void LA32WaveGenerator::updateWaveGeneratorState() {
 	// sawtoothCosineStep = EXP2F(pitch / 4096. + cosineLenFactor / 4096. + 4)
 	if (sawtoothWaveform) {
 		Bit32u expArgInt = (pitch >> 12);
-		sawtoothCosineStep = interpolateExp(~pitch & 4095);
+		sawtoothCosineStep = LA32Utilites::interpolateExp(~pitch & 4095);
 		if (expArgInt < 8) {
 			sawtoothCosineStep >>= 8 - expArgInt;
 		} else {
@@ -197,7 +247,7 @@ void LA32WaveGenerator::updateWaveGeneratorState() {
 	{
 		Bit32u expArg = pitch + cosineLenFactor;
 		Bit32u expArgInt = (expArg >> 12);
-		sampleStep = interpolateExp(~expArg & 4095);
+		sampleStep = LA32Utilites::interpolateExp(~expArg & 4095);
 		if (expArgInt < 8) {
 			sampleStep >>= 8 - expArgInt;
 		} else {
@@ -215,7 +265,7 @@ void LA32WaveGenerator::updateWaveGeneratorState() {
 	if (pulseLenFactor < cosineLenFactor) {
 		Bit32u expArg = cosineLenFactor - pulseLenFactor;
 		Bit32u expArgInt = (expArg >> 12);
-		highLen = interpolateExp(~expArg & 4095);
+		highLen = LA32Utilites::interpolateExp(~expArg & 4095);
 		highLen <<= 7 + expArgInt;
 		highLen -= (2 << 18);
 	} else {
@@ -223,7 +273,7 @@ void LA32WaveGenerator::updateWaveGeneratorState() {
 	}
 
 	// lowLen = EXP2F(20 + cosineLenFactor / 4096.) - (4 << 18) - highLen;
-	lowLen = interpolateExp(~cosineLenFactor & 4095);
+	lowLen = LA32Utilites::interpolateExp(~cosineLenFactor & 4095);
 	lowLen <<= 8 + (cosineLenFactor >> 12);
 	lowLen -= (4 << 18) + highLen;
 }
@@ -263,7 +313,7 @@ void LA32WaveGenerator::advancePosition() {
 	*(int*)&resonancePhase = ((resonanceSinePosition >> 18) + (phase > POSITIVE_FALLING_SINE_SEGMENT ? 2 : 0)) & 3;
 }
 
-LA32WaveGenerator::LogSample LA32WaveGenerator::nextSquareWaveLogSample() {
+LogSample LA32WaveGenerator::nextSquareWaveLogSample() {
 	Bit32u logSampleValue;
 	switch (phase) {
 		case POSITIVE_RISING_SINE_SEGMENT:
@@ -297,7 +347,7 @@ LA32WaveGenerator::LogSample LA32WaveGenerator::nextSquareWaveLogSample() {
 	return logSample;
 }
 
-LA32WaveGenerator::LogSample LA32WaveGenerator::nextResonanceWaveLogSample() {
+LogSample LA32WaveGenerator::nextResonanceWaveLogSample() {
 	Bit32u logSampleValue;
 	if (resonancePhase == POSITIVE_FALLING_RESONANCE_SINE_SEGMENT || resonancePhase == NEGATIVE_RISING_RESONANCE_SINE_SEGMENT) {
 		logSampleValue = logsin9[~(resonanceSinePosition >> 9) & 511];
@@ -339,7 +389,7 @@ LA32WaveGenerator::LogSample LA32WaveGenerator::nextResonanceWaveLogSample() {
 	return logSample;
 }
 
-LA32WaveGenerator::LogSample LA32WaveGenerator::nextSawtoothCosineLogSample() {
+LogSample LA32WaveGenerator::nextSawtoothCosineLogSample() {
 	Bit32u logSampleValue;
 	if ((sawtoothCosinePosition & (1 << 18)) > 0) {
 		logSampleValue = logsin9[~(sawtoothCosinePosition >> 9) & 511];
@@ -351,30 +401,6 @@ LA32WaveGenerator::LogSample LA32WaveGenerator::nextSawtoothCosineLogSample() {
 	LogSample logSample;
 	logSample.logValue = logSampleValue < 65536 ? logSampleValue : 65535;
 	logSample.sign = ((sawtoothCosinePosition & (1 << 19)) == 0) ? LogSample::POSITIVE : LogSample::NEGATIVE;
-	return logSample;
-}
-
-Bit16u LA32WaveGenerator::interpolateExp(Bit16u fract) {
-	Bit16u expTabIndex = fract >> 3;
-	Bit16u extraBits = fract & 7;
-	Bit16u expTabEntry2 = 8191 - exp9[expTabIndex];
-	Bit16u expTabEntry1 = expTabIndex == 0 ? 8191 : (8191 - exp9[expTabIndex - 1]);
-	return expTabEntry1 + (((expTabEntry2 - expTabEntry1) * extraBits) >> 3);
-}
-
-Bit16s LA32WaveGenerator::unlog(LogSample logSample) {
-	//Bit16s sample = (Bit16s)EXP2F(13.0f - logSample.logValue / 1024.0f);
-	Bit32u intLogValue = logSample.logValue >> 12;
-	Bit32u fracLogValue = logSample.logValue & 4095;
-	Bit16s sample = interpolateExp(fracLogValue) >> intLogValue;
-	return logSample.sign == LogSample::POSITIVE ? sample : -sample;
-}
-
-LA32WaveGenerator::LogSample LA32WaveGenerator::addLogSamples(LogSample sample1, LogSample sample2) {
-	Bit32u logSampleValue = sample1.logValue + sample2.logValue;
-	LogSample logSample;
-	logSample.logValue = logSampleValue < 65536 ? logSampleValue : 65535;
-	logSample.sign = sample1.sign == sample2.sign ? LogSample::POSITIVE : LogSample::NEGATIVE;
 	return logSample;
 }
 
@@ -396,48 +422,100 @@ void LA32WaveGenerator::init(bool sawtoothWaveform, Bit8u pulseWidth, Bit8u reso
 	resAmpDecayFactor = resAmpDecayFactorTable[resonance >> 2] << 2;
 }
 
-// Update parameters with respect to TVP, TVA and TVF, and get next sample value
-Bit16s LA32WaveGenerator::nextSample(Bit32u amp, Bit16u pitch, Bit32u cutoffVal) {
+// Update parameters with respect to TVP, TVA and TVF, and generate next sample
+void LA32WaveGenerator::generateNextSample(Bit32u amp, Bit16u pitch, Bit32u cutoffVal) {
 	this->amp = amp;
 	this->pitch = pitch;
 	this->cutoffVal = cutoffVal;
 
 	updateWaveGeneratorState();
-	LogSample squareLogSample = nextSquareWaveLogSample();
-	LogSample resonanceLogSample = nextResonanceWaveLogSample();
+	squareLogSample = nextSquareWaveLogSample();
+	resonanceLogSample = nextResonanceWaveLogSample();
 	LogSample cosineLogSample;
 	if (sawtoothWaveform) {
 		cosineLogSample = nextSawtoothCosineLogSample();
 	}
 	advancePosition();
-	std::cout << unlog(squareLogSample) << "; " << unlog(resonanceLogSample) << "; ";
+	//std::cout << LA32Utilites::unlog(squareLogSample) << "; " << LA32Utilites::unlog(resonanceLogSample) << "; ";
 	if (sawtoothWaveform) {
-		std::cout << unlog(cosineLogSample) << "; ";
-		return unlog(addLogSamples(squareLogSample, cosineLogSample)) + unlog(addLogSamples(resonanceLogSample, cosineLogSample));
-	} else {
-		return unlog(squareLogSample) + unlog(resonanceLogSample);
+		//std::cout << LA32Utilites::unlog(cosineLogSample) << "; ";
+		this->squareLogSample = LA32Utilites::addLogSamples(squareLogSample, cosineLogSample);
+		this->resonanceLogSample = LA32Utilites::addLogSamples(resonanceLogSample, cosineLogSample);
 	}
 }
 
+LogSample LA32WaveGenerator::getSquareLogSample() {
+	return squareLogSample;
+}
+
+LogSample LA32WaveGenerator::getResonanceLogSample() {
+	return resonanceLogSample;
+}
+
+void LA32PartialPair::init(bool ringModulated, bool mixed) {
+	this->ringModulated = ringModulated;
+	this->mixed = mixed;
+}
+
+void LA32PartialPair::initMaster(bool sawtoothWaveform, Bit8u pulseWidth, Bit8u resonance) {
+	master.init(sawtoothWaveform, pulseWidth, resonance);
+}
+
+void LA32PartialPair::initSlave(bool sawtoothWaveform, Bit8u pulseWidth, Bit8u resonance) {
+	slave.init(sawtoothWaveform, pulseWidth, resonance);
+}
+
+void LA32PartialPair::generateNextMasterSample(Bit32u amp, Bit16u pitch, Bit32u cutoff) {
+	master.generateNextSample(amp, pitch, cutoff);
+}
+
+void LA32PartialPair::generateNextSlaveSample(Bit32u amp, Bit16u pitch, Bit32u cutoff) {
+	slave.generateNextSample(amp, pitch, cutoff);
+}
+
+Bit16s LA32PartialPair::nextOutSample() {
+	LogSample masterSquareLogSample = master.getSquareLogSample();
+	LogSample masterResonanceLogSample = master.getResonanceLogSample();
+	LogSample slaveSquareLogSample = slave.getSquareLogSample();
+	LogSample slaveResonanceLogSample = slave.getResonanceLogSample();
+	if (ringModulated) {
+		Bit16s sample = LA32Utilites::unlog(LA32Utilites::addLogSamples(masterSquareLogSample, slaveSquareLogSample));
+		sample += LA32Utilites::unlog(LA32Utilites::addLogSamples(masterSquareLogSample, slaveResonanceLogSample));
+		sample += LA32Utilites::unlog(LA32Utilites::addLogSamples(slaveSquareLogSample, masterResonanceLogSample));
+		sample += LA32Utilites::unlog(LA32Utilites::addLogSamples(masterResonanceLogSample, slaveResonanceLogSample));
+		if (mixed) {
+			sample += LA32Utilites::unlog(masterSquareLogSample) + LA32Utilites::unlog(masterResonanceLogSample);
+		}
+		return sample;
+	}
+	Bit16s sample = LA32Utilites::unlog(masterSquareLogSample) + LA32Utilites::unlog(masterResonanceLogSample);
+	sample += LA32Utilites::unlog(slaveSquareLogSample) + LA32Utilites::unlog(slaveResonanceLogSample);
+	return sample;
+}
+
 int main() {
-	init_tables();
+	LA32Utilites::init_tables();
 
 	bool sawtooth = false;
-	int pw = 100;
+	int pw = 0;
 	pw = pw * 255 / 100;
-	int resonance = 30;
+	int resonance = 0;
 	resonance++;
 
-	LA32WaveGenerator la32wg;
-	la32wg.init(sawtooth, pw, resonance);
+	LA32PartialPair la32pair;
+	la32pair.init(true, true);
+	la32pair.initMaster(sawtooth, pw, resonance);
+	la32pair.initSlave(sawtooth, pw, resonance);
 
 	Bit32u amp = (264 + ((resonance >> 1) << 8)) << 10;
 	Bit16u pitch = 24835;
 	if (sawtooth) pitch -= 4096;
-	int cutoff = 100;
+	int cutoff = 50;
 	cutoff = (78 + cutoff) << 18;
 
 	for (int i = 0; i < MAX_SAMPLES; i++) {
-		std::cout << la32wg.nextSample(amp, pitch, cutoff) << std::endl;
+		la32pair.generateNextMasterSample(amp, pitch, cutoff);
+		la32pair.generateNextSlaveSample(amp, pitch, cutoff);
+		std::cout << la32pair.nextOutSample() << std::endl;
 	}
 }
