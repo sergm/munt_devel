@@ -122,6 +122,9 @@ class LA32WaveGenerator {
 	// As the resonance value cannot change while the partial is active, it is initialised once
 	Bit32u resonanceAmpSubtraction;
 
+	// The decay speed of resonance sine wave, depends on the resonance value
+	Bit32u resAmpDecayFactor;
+
 	// Relative position within the cosine wave which is used to form the sawtooth wave
 	// 0 - start of the positive rising segment of the square wave
 	// The wave length corresponds to the current pitch
@@ -304,12 +307,10 @@ LA32WaveGenerator::LogSample LA32WaveGenerator::nextResonanceWaveLogSample() {
 	logSampleValue <<= 2;
 	logSampleValue += amp >> 10;
 
-	// The decaying speed of the resonance sine is found a bit different for the positive and the negative segments
-	static const Bit32u resAmpDecrementFactorTable[] = {31, 16, 12, 8, 5, 3, 2, 1};
-	Bit32u resAmpDecrementFactor = resAmpDecrementFactorTable[resonance >> 2] << 2;
-	resAmpDecrementFactor = phase < NEGATIVE_FALLING_SINE_SEGMENT ? resAmpDecrementFactor : resAmpDecrementFactor + 1;
+	// From the digital captures, the decaying speed of the resonance sine is found a bit different for the positive and the negative segments
+	Bit32u decayFactor = phase < NEGATIVE_FALLING_SINE_SEGMENT ? resAmpDecayFactor : resAmpDecayFactor + 1;
 	// Unsure about resonanceSinePosition here. It's possible that dedicated counter & decrement are used. Although, cutoff is finely ramped, so maybe not.
-	logSampleValue += resonanceAmpSubtraction + ((resonanceSinePosition * resAmpDecrementFactor) >> 12);
+	logSampleValue += resonanceAmpSubtraction + ((resonanceSinePosition * decayFactor) >> 12);
 
 	// To ensure the output wave has no breaks, two different windows are appied to the beginning and the ending of the resonance sine segment
 	if (phase == POSITIVE_RISING_SINE_SEGMENT || phase == NEGATIVE_FALLING_SINE_SEGMENT) {
@@ -386,9 +387,13 @@ void LA32WaveGenerator::init(bool sawtoothWaveform, Bit8u pulseWidth, Bit8u reso
 	phase = POSITIVE_RISING_SINE_SEGMENT;
 	squareWavePosition = 0;
 	sawtoothCosinePosition = 1 << 18;
+
 	resonancePhase = POSITIVE_RISING_RESONANCE_SINE_SEGMENT;
 	resonanceSinePosition = 0;
 	resonanceAmpSubtraction = (32 - resonance) << 10;
+
+	static const Bit32u resAmpDecayFactorTable[] = {31, 16, 12, 8, 5, 3, 2, 1};
+	resAmpDecayFactor = resAmpDecayFactorTable[resonance >> 2] << 2;
 }
 
 // Update parameters with respect to TVP, TVA and TVF, and get next sample value
