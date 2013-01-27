@@ -169,25 +169,9 @@ class LA32WaveGenerator {
 	LogSample addLogSamples(LogSample sample1, LogSample sample2);
 
 public:
-	void init(bool sawtoothWaveform, Bit32u amp, Bit16u pitch, Bit32u cutoff, Bit8u pulseWidth, Bit8u resonance);
-	Bit16s nextSample(/* Bit32u amp, Bit16u pitch, Bit32u cutoff */);
+	void init(bool sawtoothWaveform, Bit8u pulseWidth, Bit8u resonance);
+	Bit16s nextSample(Bit32u amp, Bit16u pitch, Bit32u cutoff);
 };
-
-void LA32WaveGenerator::init(bool sawtoothWaveform, Bit32u amp, Bit16u pitch, Bit32u cutoffVal, Bit8u pulseWidth, Bit8u resonance) {
-	this->sawtoothWaveform = sawtoothWaveform;
-	this->amp = amp;
-	this->pitch = pitch;
-	this->cutoffVal = cutoffVal;
-	this->pulseWidth = pulseWidth;
-	this->resonance = resonance;
-
-	phase = POSITIVE_RISING_SINE_SEGMENT;
-	squareWavePosition = 0;
-	sawtoothCosinePosition = 1 << 18;
-	resonancePhase = POSITIVE_RISING_RESONANCE_SINE_SEGMENT;
-	resonanceSinePosition = 0;
-	resonanceAmpSubtraction = (32 - resonance) << 10;
-}
 
 void LA32WaveGenerator::updateWaveGeneratorState() {
 	// sawtoothCosineStep = EXP2F(pitch / 4096. + cosineLenFactor / 4096. + 4)
@@ -393,7 +377,26 @@ LA32WaveGenerator::LogSample LA32WaveGenerator::addLogSamples(LogSample sample1,
 	return logSample;
 }
 
-Bit16s LA32WaveGenerator::nextSample() {
+// Initialisation of the WG engine and set up the invariant parameters
+void LA32WaveGenerator::init(bool sawtoothWaveform, Bit8u pulseWidth, Bit8u resonance) {
+	this->sawtoothWaveform = sawtoothWaveform;
+	this->pulseWidth = pulseWidth;
+	this->resonance = resonance;
+
+	phase = POSITIVE_RISING_SINE_SEGMENT;
+	squareWavePosition = 0;
+	sawtoothCosinePosition = 1 << 18;
+	resonancePhase = POSITIVE_RISING_RESONANCE_SINE_SEGMENT;
+	resonanceSinePosition = 0;
+	resonanceAmpSubtraction = (32 - resonance) << 10;
+}
+
+// Update parameters with respect to TVP, TVA and TVF, and get next sample value
+Bit16s LA32WaveGenerator::nextSample(Bit32u amp, Bit16u pitch, Bit32u cutoffVal) {
+	this->amp = amp;
+	this->pitch = pitch;
+	this->cutoffVal = cutoffVal;
+
 	updateWaveGeneratorState();
 	LogSample squareLogSample = nextSquareWaveLogSample();
 	LogSample resonanceLogSample = nextResonanceWaveLogSample();
@@ -413,16 +416,20 @@ Bit16s LA32WaveGenerator::nextSample() {
 int main() {
 	init_tables();
 
-	int cutoff = 70;
-	cutoff = (78 + cutoff) << 18;
 	int pw = 75;
 	pw = pw * 255 / 100;
 	int resonance = 20;
 	resonance++;
 
 	LA32WaveGenerator la32wg;
-	la32wg.init(true, (264 + ((resonance >> 1) << 8)) << 10, 24835 - 4096, cutoff, pw, resonance);
+	la32wg.init(true, pw, resonance);
+
+	Bit32u amp = (264 + ((resonance >> 1) << 8)) << 10;
+	Bit16u pitch = 24835 - 4096;
+	int cutoff = 70;
+	cutoff = (78 + cutoff) << 18;
+
 	for (int i = 0; i < MAX_SAMPLES; i++) {
-		std::cout << la32wg.nextSample() << std::endl;
+		std::cout << la32wg.nextSample(amp, pitch, cutoff) << std::endl;
 	}
 }
