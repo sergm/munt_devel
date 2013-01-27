@@ -54,6 +54,31 @@ static void init_tables() {
  * To synthesise sawtooth waves, the resulting square wave is multiplied by synchronous cosine wave.
  */
 class LA32WaveGenerator {
+	/**
+	 * Wave generation is performed in the log-space that allows replacing multiplications by cheap additions
+	 * It's assumed that only low-bit multiplications occur in a few places which are unavoidable like these:
+	 * - interpolation of exponent table (obvious, a delta value has 4 bits)
+	 * - computation of resonance amp decay envelope (the table contains values with 1-2 "1" bits except the very first value 31 but this case can be found using inversion)
+	 * - interpolation of PCM samples (obvious, the wave position counter is in the linear space, there is no log() table in the chip)
+	 * and it seems to be implemented in the same way as in the Boss chip, i.e. right shifted additions which involved noticeable precision loss
+	 * Subtraction is supposed to be replaced by simple inversion
+	 * As the logarithmic sine is always negative, all the logarithmic values are treated as decrements
+	 */
+	struct LogSample {
+		// 16-bit fixed point value, includes 12-bit fractional part
+		// 4-bit integer part allows to present any 16-bit sample in the log-space
+		// Obviously, the log value doesn't contain the sign of the resulting sample
+		Bit16u logValue;
+		enum {
+			POSITIVE,
+			NEGATIVE
+		} sign;
+	};
+
+	//***************************************************************************
+	//  The local copy of partial parameters below
+	//***************************************************************************
+
 	// True means the resulting square wave is to be multiplied by the synchronous cosine
 	bool sawtoothWaveform;
 
@@ -69,21 +94,26 @@ class LA32WaveGenerator {
 
 	// Processed value in range [0..255]
 	// Values in range [0..128] have no effect and the resulting wave remains symmetrical
-	// Value 255 corresponds to the maximum possible asymmetrical wave
+	// Value 255 corresponds to the maximum possible asymmetric of the resulting wave
 	Bit8u pulseWidth;
 
 	// Composed of the base cutoff in range [78..178] left-shifted by 18 bits and the TVF modifier
 	Bit32u cutoffVal;
 
+	//***************************************************************************
+	// Internal variables below
+	//***************************************************************************
+
 	// Relative position within a square wave phase:
 	// 0             - start of the phase
-	// 262144 (2^18) - corresponds to end of the sine phases. The length of linear phases may vary.
+	// 262144 (2^18) - corresponds to end of the sine phases, the length of linear phases may vary
 	Bit32u squareWavePosition;
 	Bit32u highLen;
 	Bit32u lowLen;
 
-	// Relative position within a square wave phase:
+	// Relative position within the positive or negative wave segment:
 	// 0 - start of the corresponding positive or negative segment of the square wave
+	// 262144 (2^18) - corresponds to end of the first sine phase in the square wave
 	// The same increment sampleStep is used to indicate the current position
 	// since the length of the resonance wave is always equal to four square wave sine segments.
 	Bit32u resonanceSinePosition;
@@ -92,11 +122,12 @@ class LA32WaveGenerator {
 	// As the resonance value cannot change while the partial is active, it is initialised once
 	Bit32u resonanceAmpSubtraction;
 
-	// Relative position within the sawtooth cosine wave
+	// Relative position within the cosine wave which is used to form the sawtooth wave
 	// 0 - start of the positive rising segment of the square wave
 	// The wave length corresponds to the current pitch
 	Bit32u sawtoothCosinePosition;
 
+	// Current phase of the square wave
 	enum {
 		POSITIVE_RISING_SINE_SEGMENT,
 		POSITIVE_LINEAR_SEGMENT,
@@ -106,6 +137,7 @@ class LA32WaveGenerator {
 		NEGATIVE_RISING_SINE_SEGMENT
 	} phase;
 
+	// Current phase of the resonance wave
 	enum {
 		POSITIVE_RISING_RESONANCE_SINE_SEGMENT,
 		POSITIVE_FALLING_RESONANCE_SINE_SEGMENT,
@@ -113,7 +145,7 @@ class LA32WaveGenerator {
 		NEGATIVE_RISING_RESONANCE_SINE_SEGMENT
 	} resonancePhase;
 
-	// The increment of wavePosition which is added when the current sample is completely processed and processing of the next sample begins
+	// The increment of a wave position which is added when the current sample is completely processed
 	// Derived from the current values of pitch and cutoff
 	Bit32u sampleStep;
 
@@ -121,13 +153,9 @@ class LA32WaveGenerator {
 	// Depends on the current pitch value
 	Bit32u sawtoothCosineStep;
 
-	struct LogSample {
-		Bit16u logValue;
-		enum {
-			POSITIVE,
-			NEGATIVE
-		} sign;
-	};
+	//***************************************************************************
+	// Internal methods below
+	//***************************************************************************
 
 	void updateWaveGeneratorState();
 	void advancePosition();
@@ -142,7 +170,7 @@ class LA32WaveGenerator {
 
 public:
 	void init(bool sawtoothWaveform, Bit32u amp, Bit16u pitch, Bit32u cutoff, Bit8u pulseWidth, Bit8u resonance);
-	Bit16s nextSample();
+	Bit16s nextSample(/* Bit32u amp, Bit16u pitch, Bit32u cutoff */);
 };
 
 void LA32WaveGenerator::init(bool sawtoothWaveform, Bit32u amp, Bit16u pitch, Bit32u cutoffVal, Bit8u pulseWidth, Bit8u resonance) {
