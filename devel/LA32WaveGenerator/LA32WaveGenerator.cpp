@@ -410,8 +410,9 @@ Bit16s LA32WaveGenerator::nextSample(Bit32u amp, Bit16u pitch, Bit32u cutoffVal)
 		cosineLogSample = nextSawtoothCosineLogSample();
 	}
 	advancePosition();
-	std::cout << unlog(squareLogSample) << "; " << unlog(resonanceLogSample) << "; " << unlog(cosineLogSample) << "; ";
+	std::cout << unlog(squareLogSample) << "; " << unlog(resonanceLogSample) << "; ";
 	if (sawtoothWaveform) {
+		std::cout << unlog(cosineLogSample) << "; ";
 		return unlog(addLogSamples(squareLogSample, cosineLogSample)) + unlog(addLogSamples(resonanceLogSample, cosineLogSample));
 	} else {
 		return unlog(squareLogSample) + unlog(resonanceLogSample);
@@ -421,17 +422,19 @@ Bit16s LA32WaveGenerator::nextSample(Bit32u amp, Bit16u pitch, Bit32u cutoffVal)
 int main() {
 	init_tables();
 
-	int pw = 75;
+	bool sawtooth = false;
+	int pw = 100;
 	pw = pw * 255 / 100;
-	int resonance = 20;
+	int resonance = 30;
 	resonance++;
 
 	LA32WaveGenerator la32wg;
-	la32wg.init(true, pw, resonance);
+	la32wg.init(sawtooth, pw, resonance);
 
 	Bit32u amp = (264 + ((resonance >> 1) << 8)) << 10;
-	Bit16u pitch = 24835 - 4096;
-	int cutoff = 70;
+	Bit16u pitch = 24835;
+	if (sawtooth) pitch -= 4096;
+	int cutoff = 100;
 	cutoff = (78 + cutoff) << 18;
 
 	for (int i = 0; i < MAX_SAMPLES; i++) {
