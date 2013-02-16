@@ -5,7 +5,7 @@
 
   !define VERSION "1.1.1"
   !define PATCH  "1"
-  !define INST_DIR "C:/Qt/munt_build/release/_CPack_Packages/win32/NSIS/munt-1.1.1-win32"
+  !define INST_DIR "munt-1.1.1-win32"
 
 ;--------------------------------
 ;Variables
@@ -32,7 +32,7 @@
 
   ;Name and file
   Name "munt 1.1.1"
-  OutFile "C:/Qt/munt_build/release/_CPack_Packages/win32/NSIS/munt-1.1.1-win32.exe"
+  OutFile "munt-1.1.1-win32.exe"
 
   ;Set compression
   SetCompressor lzma
@@ -643,6 +643,9 @@ Section "-Core installation"
   ;Store installation folder
   WriteRegStr SHCTX "Software\muntemu.org\munt 1.1.1" "" $INSTDIR
 
+  ;Register MIDI driver
+  Exec '"$INSTDIR\bin\mt32emu_win32drv\drvsetup.exe" install'
+
   ;Create uninstaller
   WriteUninstaller "$INSTDIR\Uninstall.exe"
   Push "DisplayName"
@@ -820,15 +823,37 @@ Section "Uninstall"
   ;MessageBox MB_OK "Install to desktop: $INSTALL_DESKTOP "
 
 
+  ;Unregister MIDI driver
+  ExecWait '"$INSTDIR\bin\mt32emu_win32drv\drvsetup.exe" uninstall'
 
   ;Remove files we installed.
   ;Keep the list of directories here in sync with the File commands above.
-  Delete "$INSTDIR\bin\Microsoft.VC90.CRT.manifest"
-  Delete "$INSTDIR\bin\msvcm90.dll"
-  Delete "$INSTDIR\bin\msvcp90.dll"
-  Delete "$INSTDIR\bin\msvcr90.dll"
+  Delete "$INSTDIR\bin\intl.dll"
+  Delete "$INSTDIR\bin\libglib-2.0-0.dll"
+  Delete "$INSTDIR\bin\QtCore4.dll"
+  Delete "$INSTDIR\bin\QtGui4.dll"
+  Delete "$INSTDIR\bin\QtMultimedia4.dll"
   Delete "$INSTDIR\bin\mt32emu-qt.exe"
   Delete "$INSTDIR\bin\mt32emu-smf2wav.exe"
+  Delete "$INSTDIR\bin\imageformats\qgif4.dll"
+  Delete "$INSTDIR\bin\mt32emu_win32drv\drvsetup.exe"
+  Delete "$INSTDIR\bin\mt32emu_win32drv\mt32emu.dll"
+  Delete "$INSTDIR\bin\mt32emu_win32drv\mt32emu.inf"
+  Delete "$INSTDIR\docs\mt32emu\AUTHORS.txt"
+  Delete "$INSTDIR\docs\mt32emu\COPYING.LESSER.txt"
+  Delete "$INSTDIR\docs\mt32emu\COPYING.txt"
+  Delete "$INSTDIR\docs\mt32emu\NEWS.txt"
+  Delete "$INSTDIR\docs\mt32emu\README.txt"
+  Delete "$INSTDIR\docs\mt32emu\TODO.txt"
+  Delete "$INSTDIR\docs\mt32emu_qt\AUTHORS.txt"
+  Delete "$INSTDIR\docs\mt32emu_qt\COPYING.txt"
+  Delete "$INSTDIR\docs\mt32emu_qt\NEWS.txt"
+  Delete "$INSTDIR\docs\mt32emu_qt\README.txt"
+  Delete "$INSTDIR\docs\mt32emu_qt\README_DRIVER.txt"
+  Delete "$INSTDIR\docs\mt32emu_qt\TODO.txt"
+  Delete "$INSTDIR\docs\mt32emu_smf2wav\AUTHORS.txt"
+  Delete "$INSTDIR\docs\mt32emu_smf2wav\COPYING.txt"
+  Delete "$INSTDIR\docs\mt32emu_smf2wav\README.txt"
   Delete "$INSTDIR\include\mt32emu\File.h"
   Delete "$INSTDIR\include\mt32emu\FileStream.h"
   Delete "$INSTDIR\include\mt32emu\LA32Ramp.h"
@@ -845,7 +870,13 @@ Section "Uninstall"
   Delete "$INSTDIR\include\mt32emu\TVP.h"
   Delete "$INSTDIR\lib\mt32emu.lib"
 
+  RMDir "$INSTDIR\bin\imageformats"
+  RMDir "$INSTDIR\bin\mt32emu_win32drv"
   RMDir "$INSTDIR\bin"
+  RMDir "$INSTDIR\docs\mt32emu"
+  RMDir "$INSTDIR\docs\mt32emu_qt"
+  RMDir "$INSTDIR\docs\mt32emu_smf2wav"
+  RMDir "$INSTDIR\docs"
   RMDir "$INSTDIR\include\mt32emu"
   RMDir "$INSTDIR\include"
   RMDir "$INSTDIR\lib"
