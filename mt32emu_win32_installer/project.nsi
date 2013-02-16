@@ -5,7 +5,7 @@
 
   !define VERSION "1.1.1"
   !define PATCH  "1"
-  !define INST_DIR "munt-1.1.1-win32"
+  !define INST_DIR "munt-${VERSION}-win32"
 
 ;--------------------------------
 ;Variables
@@ -25,14 +25,14 @@
   !include "MUI.nsh"
 
   ;Default installation folder
-  InstallDir "$PROGRAMFILES\munt 1.1.1"
+  InstallDir "$PROGRAMFILES\munt-${VERSION}"
 
 ;--------------------------------
 ;General
 
   ;Name and file
-  Name "munt 1.1.1"
-  OutFile "munt-1.1.1-win32.exe"
+  Name "munt ${VERSION}"
+  OutFile "munt-${VERSION}-win32.exe"
 
   ;Set compression
   SetCompressor lzma
@@ -74,7 +74,7 @@ Var AR_RegFlags
 
   ClearErrors
   ;Reading component status from registry
-  ReadRegDWORD $AR_RegFlags HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\munt 1.1.1\Components\${SecName}" "Installed"
+  ReadRegDWORD $AR_RegFlags HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\munt ${VERSION}\Components\${SecName}" "Installed"
   IfErrors "default_${SecName}"
     ;Status will stay default if registry value not found
     ;(component was never installed)
@@ -107,13 +107,13 @@ Var AR_RegFlags
     ;Section is not selected:
     ;Calling Section uninstall macro and writing zero installed flag
     !insertmacro "Remove_${${SecName}}"
-    WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\munt 1.1.1\Components\${SecName}" \
+    WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\munt ${VERSION}\Components\${SecName}" \
   "Installed" 0
     Goto "exit_${SecName}"
 
  "leave_${SecName}:"
     ;Section is selected:
-    WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\munt 1.1.1\Components\${SecName}" \
+    WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\munt ${VERSION}\Components\${SecName}" \
   "Installed" 1
 
  "exit_${SecName}:"
@@ -493,7 +493,7 @@ Function ConditionalAddToRegisty
   Pop $0
   Pop $1
   StrCmp "$0" "" ConditionalAddToRegisty_EmptyString
-    WriteRegStr SHCTX "Software\Microsoft\Windows\CurrentVersion\Uninstall\munt 1.1.1" \
+    WriteRegStr SHCTX "Software\Microsoft\Windows\CurrentVersion\Uninstall\munt ${VERSION}" \
     "$1" "$0"
     ;MessageBox MB_OK "Set Registry: '$1' to '$0'"
     DetailPrint "Set install registry entry: '$1' to '$0'"
@@ -552,7 +552,7 @@ FunctionEnd
 
   ;Start Menu Folder Page Configuration
   !define MUI_STARTMENUPAGE_REGISTRY_ROOT "SHCTX"
-  !define MUI_STARTMENUPAGE_REGISTRY_KEY "Software\muntemu.org\munt 1.1.1"
+  !define MUI_STARTMENUPAGE_REGISTRY_KEY "Software\muntemu.org\munt ${VERSION}"
   !define MUI_STARTMENUPAGE_REGISTRY_VALUENAME "Start Menu Folder"
   !insertmacro MUI_PAGE_STARTMENU Application $STARTMENU_FOLDER
 
@@ -641,7 +641,7 @@ Section "-Core installation"
   File /r "${INST_DIR}\*.*"
 
   ;Store installation folder
-  WriteRegStr SHCTX "Software\muntemu.org\munt 1.1.1" "" $INSTDIR
+  WriteRegStr SHCTX "Software\muntemu.org\munt ${VERSION}" "" $INSTDIR
 
   ;Register MIDI driver
   Exec '"$INSTDIR\bin\mt32emu_win32drv\drvsetup.exe" install'
@@ -649,10 +649,10 @@ Section "-Core installation"
   ;Create uninstaller
   WriteUninstaller "$INSTDIR\Uninstall.exe"
   Push "DisplayName"
-  Push "munt 1.1.1"
+  Push "munt ${VERSION}"
   Call ConditionalAddToRegisty
   Push "DisplayVersion"
-  Push "1.1.1"
+  Push "${VERSION}"
   Call ConditionalAddToRegisty
   Push "Publisher"
   Push "muntemu.org"
@@ -737,7 +737,7 @@ SectionEnd
 ;--------------------------------
 ; Create custom pages
 Function InstallOptionsPage
-  !insertmacro MUI_HEADER_TEXT "Install Options" "Choose options for installing munt 1.1.1"
+  !insertmacro MUI_HEADER_TEXT "Install Options" "Choose options for installing munt ${VERSION}"
   !insertmacro MUI_INSTALLOPTIONS_DISPLAY "NSIS.InstallOptions.ini"
 
 FunctionEnd
@@ -809,17 +809,17 @@ FunctionEnd
 
 Section "Uninstall"
   ReadRegStr $START_MENU SHCTX \
-   "Software\Microsoft\Windows\CurrentVersion\Uninstall\munt 1.1.1" "StartMenu"
+   "Software\Microsoft\Windows\CurrentVersion\Uninstall\munt ${VERSION}" "StartMenu"
   ;MessageBox MB_OK "Start menu is in: $START_MENU"
   ReadRegStr $DO_NOT_ADD_TO_PATH SHCTX \
-    "Software\Microsoft\Windows\CurrentVersion\Uninstall\munt 1.1.1" "DoNotAddToPath"
+    "Software\Microsoft\Windows\CurrentVersion\Uninstall\munt ${VERSION}" "DoNotAddToPath"
   ReadRegStr $ADD_TO_PATH_ALL_USERS SHCTX \
-    "Software\Microsoft\Windows\CurrentVersion\Uninstall\munt 1.1.1" "AddToPathAllUsers"
+    "Software\Microsoft\Windows\CurrentVersion\Uninstall\munt ${VERSION}" "AddToPathAllUsers"
   ReadRegStr $ADD_TO_PATH_CURRENT_USER SHCTX \
-    "Software\Microsoft\Windows\CurrentVersion\Uninstall\munt 1.1.1" "AddToPathCurrentUser"
+    "Software\Microsoft\Windows\CurrentVersion\Uninstall\munt ${VERSION}" "AddToPathCurrentUser"
   ;MessageBox MB_OK "Add to path: $DO_NOT_ADD_TO_PATH all users: $ADD_TO_PATH_ALL_USERS"
   ReadRegStr $INSTALL_DESKTOP SHCTX \
-    "Software\Microsoft\Windows\CurrentVersion\Uninstall\munt 1.1.1" "InstallToDesktop"
+    "Software\Microsoft\Windows\CurrentVersion\Uninstall\munt ${VERSION}" "InstallToDesktop"
   ;MessageBox MB_OK "Install to desktop: $INSTALL_DESKTOP "
 
 
@@ -889,13 +889,13 @@ Section "Uninstall"
 
   ;Remove the uninstaller itself.
   Delete "$INSTDIR\Uninstall.exe"
-  DeleteRegKey SHCTX "Software\Microsoft\Windows\CurrentVersion\Uninstall\munt 1.1.1"
+  DeleteRegKey SHCTX "Software\Microsoft\Windows\CurrentVersion\Uninstall\munt ${VERSION}"
 
   ;Remove the installation directory if it is empty.
   RMDir "$INSTDIR"
 
   ; Remove the registry entries.
-  DeleteRegKey SHCTX "Software\muntemu.org\munt 1.1.1"
+  DeleteRegKey SHCTX "Software\muntemu.org\munt ${VERSION}"
 
   ; Removes all optional components
   !insertmacro SectionList "RemoveSection"
@@ -939,7 +939,7 @@ Section "Uninstall"
     StrCmp "$MUI_TEMP" "$SMPROGRAMS" secondStartMenuDeleteLoopDone secondStartMenuDeleteLoop
   secondStartMenuDeleteLoopDone:
 
-  DeleteRegKey /ifempty SHCTX "Software\muntemu.org\munt 1.1.1"
+  DeleteRegKey /ifempty SHCTX "Software\muntemu.org\munt ${VERSION}"
 
   Push $INSTDIR\bin
   StrCmp $DO_NOT_ADD_TO_PATH_ "1" doNotRemoveFromPath 0
@@ -960,11 +960,11 @@ SectionEnd
 Function .onInit
   StrCmp "" "ON" 0 inst
 
-  ReadRegStr $0 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\munt 1.1.1" "UninstallString"
+  ReadRegStr $0 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\munt ${VERSION}" "UninstallString"
   StrCmp $0 "" inst
 
   MessageBox MB_YESNOCANCEL|MB_ICONEXCLAMATION \
-  "munt 1.1.1 is already installed. $\n$\nDo you want to uninstall the old version before installing the new one?" \
+  "munt ${VERSION} is already installed. $\n$\nDo you want to uninstall the old version before installing the new one?" \
   IDYES uninst IDNO inst
   Abort
 
@@ -988,14 +988,14 @@ inst:
   ; install directory that is expected to be the
   ; default
   StrCpy $IS_DEFAULT_INSTALLDIR 0
-  StrCmp "$INSTDIR" "$PROGRAMFILES\munt 1.1.1" 0 +2
+  StrCmp "$INSTDIR" "$PROGRAMFILES\munt-${VERSION}" 0 +2
     StrCpy $IS_DEFAULT_INSTALLDIR 1
 
   StrCpy $SV_ALLUSERS "JustMe"
   ; if default install dir then change the default
   ; if it is installed for JustMe
   StrCmp "$IS_DEFAULT_INSTALLDIR" "1" 0 +2
-    StrCpy $INSTDIR "$DOCUMENTS\munt 1.1.1"
+    StrCpy $INSTDIR "$DOCUMENTS\munt-${VERSION}"
 
   ClearErrors
   UserInfo::GetName
@@ -1021,7 +1021,7 @@ inst:
   done:
   StrCmp $SV_ALLUSERS "AllUsers" 0 +3
     StrCmp "$IS_DEFAULT_INSTALLDIR" "1" 0 +2
-      StrCpy $INSTDIR "$PROGRAMFILES\munt 1.1.1"
+      StrCpy $INSTDIR "$PROGRAMFILES\munt-${VERSION}"
 
   StrCmp "" "ON" 0 noOptionsPage
     !insertmacro MUI_INSTALLOPTIONS_EXTRACT "NSIS.InstallOptions.ini"
