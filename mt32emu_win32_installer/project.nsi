@@ -3,8 +3,8 @@
 ;--------------------------------
 ; You must define these values
 
-  !define VERSION "1.1.1"
-  !define PATCH  "1"
+  !define VERSION "1.3.0"
+  !define PATCH  "0"
   !define INST_DIR "munt-${VERSION}-win32"
 
 ;--------------------------------
@@ -25,13 +25,13 @@
   !include "MUI.nsh"
 
   ;Default installation folder
-  InstallDir "$PROGRAMFILES\munt-${VERSION}"
+  InstallDir "$PROGRAMFILES\munt"
 
 ;--------------------------------
 ;General
 
   ;Name and file
-  Name "munt ${VERSION}"
+  Name "Munt - MT-32 Sound Module Emulator"
   OutFile "munt-${VERSION}-win32.exe"
 
   ;Set compression
@@ -552,7 +552,7 @@ FunctionEnd
 
   ;Start Menu Folder Page Configuration
   !define MUI_STARTMENUPAGE_REGISTRY_ROOT "SHCTX"
-  !define MUI_STARTMENUPAGE_REGISTRY_KEY "Software\muntemu.org\munt ${VERSION}"
+  !define MUI_STARTMENUPAGE_REGISTRY_KEY "Software\muntemu.org\munt"
   !define MUI_STARTMENUPAGE_REGISTRY_VALUENAME "Start Menu Folder"
   !insertmacro MUI_PAGE_STARTMENU Application $STARTMENU_FOLDER
 
@@ -856,7 +856,9 @@ Section "Uninstall"
   Delete "$INSTDIR\docs\mt32emu_smf2wav\README.txt"
   Delete "$INSTDIR\include\mt32emu\File.h"
   Delete "$INSTDIR\include\mt32emu\FileStream.h"
+  Delete "$INSTDIR\include\mt32emu\LA32FloatWaveGenerator.h"
   Delete "$INSTDIR\include\mt32emu\LA32Ramp.h"
+  Delete "$INSTDIR\include\mt32emu\LA32WaveGenerator.h"
   Delete "$INSTDIR\include\mt32emu\mt32emu.h"
   Delete "$INSTDIR\include\mt32emu\Part.h"
   Delete "$INSTDIR\include\mt32emu\Partial.h"
