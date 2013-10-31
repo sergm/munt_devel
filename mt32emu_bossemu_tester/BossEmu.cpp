@@ -3,7 +3,7 @@
 
 #include "BossEmu.h"
 
-#define DEBUG
+//#define DEBUG
 
 static const int MIN_ROM_SIZE = 0x4000;
 static const int MAX_ROM_SIZE = 0x8000;
@@ -21,9 +21,6 @@ static const int ACCUMULATOR_OUT_BIT = 0x10;
 
 static void initRAM(short ram[]) {
 	// Set test values
-	ram[0x3438] = 0xFF6E;
-	ram[0x2c41] = 0x01;
-	ram[0x343d] = 0x08a;
 }
 
 BossEmu::BossEmu(const unsigned char useROM[], const int length) {

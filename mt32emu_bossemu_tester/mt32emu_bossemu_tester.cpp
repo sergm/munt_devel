@@ -48,7 +48,7 @@ int main(int argc, char *argv[]) {
 
 	// This simulates warmup time for allpass buffers to fill with noise
 	DWORD warmupDelay = 10000 + GetTickCount() & 32767;
-	for (DWORD i = -10; i < warmupDelay; i++) {
+	for (DWORD i = 0; i < warmupDelay; i++) {
 		model.process(&inLeft, &inRight, &outLeft, &outRight, 1);
 	}
 
@@ -62,6 +62,6 @@ int main(int argc, char *argv[]) {
 		}
 		model.process(&inLeft, &inRight, &outLeft, &outRight, 1);
 		std::cout << outLeft << "; " << outRight << std::endl;
-	} while (i++ < -65535 && model.isActive());
+	} while (i++ < 65535 && model.isActive());
 	return 0;
 }
