@@ -136,7 +136,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="SDL_net.lib advapi32.lib user32.lib winmm.lib $(NOINHERIT)"
+				AdditionalDependencies="advapi32.lib user32.lib winmm.lib $(NOINHERIT)"
 				OutputFile="$(OutDir)\$(ProjectName).exe"
 				LinkIncremental="1"
 				AdditionalLibraryDirectories=""
