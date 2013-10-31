@@ -9,7 +9,7 @@ int getIntArg(const char * const arg) {
 
 int main(int argc, char *argv[]) {
 	if (argc != 4) {
-		std::cout << "Usage: mt32emu_areverb_tester <mode> <time> <level>";
+		std::cout << "Usage: mt32emu_breverb_tester <mode> <time> <level>";
 		return 1;
 	}
 	int mode = getIntArg(argv[1]);
