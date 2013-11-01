@@ -70,7 +70,12 @@ void BossEmu::setParameters(int mode, int time, int level) {
 }
 
 bool BossEmu::isActive() {
-	return ram == NULL ? false : true;
+	if (ram != NULL) {
+		for (int i = 0; i < RAM_SIZE; ++i) {
+			if (ram[i] < -8 || 8 < ram[i]) return true;
+		}
+	}
+	return false;
 }
 
 void BossEmu::process(const short *inLeft, const short *inRight, short *outLeft, short *outRight, int length) {
