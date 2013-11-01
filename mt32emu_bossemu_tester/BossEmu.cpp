@@ -35,10 +35,6 @@ static const int SHIFTER_BIT = 0x04;
 static const int INVERSION_BIT = 0x08;
 static const int ACCUMULATOR_OUT_BIT = 0x10;
 
-static void initRAM(short ram[]) {
-	// Set test values
-}
-
 BossEmu::BossEmu(const unsigned char useROM[], const int length) {
 	if (useROM == NULL || (length != MIN_ROM_SIZE && length != MAX_ROM_SIZE)) {
 		// Invalid ROM data
@@ -50,7 +46,6 @@ BossEmu::BossEmu(const unsigned char useROM[], const int length) {
 	rom = useROM;
 	ram = new short[RAM_SIZE];
 	memset(ram, 0, sizeof(short) * RAM_SIZE);
-	initRAM(ram);
 	currentPosition = 0;
 	accumulator = 0;
 	shifter = 0;
