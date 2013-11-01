@@ -19,7 +19,12 @@
 
 class BossEmu {
 public:
-	BossEmu(const unsigned char rom[], int length);
+	enum EMU_MODE {
+		MT32_EMU_MODE,
+		RV_2_EMU_MODE
+	};
+
+	BossEmu(const unsigned char rom[], int length, EMU_MODE emuMode = MT32_EMU_MODE);
 	~BossEmu();
 	void setParameters(int mode, int time, int level);
 	bool isActive();
@@ -27,6 +32,7 @@ public:
 
 private:
 	const unsigned char *rom;
+	const EMU_MODE emuMode;
 	bool extendedModesEnabled;
 	short *ram;
 

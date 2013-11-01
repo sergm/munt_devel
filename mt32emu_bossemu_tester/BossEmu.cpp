@@ -35,7 +35,7 @@ static const int SHIFTER_BIT = 0x04;
 static const int INVERSION_BIT = 0x08;
 static const int ACCUMULATOR_OUT_BIT = 0x10;
 
-BossEmu::BossEmu(const unsigned char useROM[], const int length) {
+BossEmu::BossEmu(const unsigned char useROM[], const int length, const EMU_MODE useEmuMode) : emuMode(useEmuMode) {
 	if (useROM == NULL || (length != MIN_ROM_SIZE && length != MAX_ROM_SIZE)) {
 		// Invalid ROM data
 		rom = NULL;
@@ -59,9 +59,15 @@ BossEmu::~BossEmu() {
 }
 
 void BossEmu::setParameters(int mode, int time, int level) {
-	mode = extendedModesEnabled ? mode & 7 : mode & 3;
-	romBaseIx = (mode << 12) | ((level & 7) << 9) | ((time & 4) << 6);
-	sawBits = 1 << (time & 3);
+	if (emuMode == MT32_EMU_MODE) {
+		mode = extendedModesEnabled ? mode & 7 : mode & 3;
+		romBaseIx = (mode << 12) | ((level & 7) << 9) | ((time & 4) << 6);
+		sawBits = 1 << (time & 3);
+	} else if (emuMode == RV_2_EMU_MODE) {
+		mode = extendedModesEnabled ? mode & 0xF : mode & 7;
+		romBaseIx = (mode << 10) | ((time & 0x0C) << 6);
+		sawBits = 1 << (time & 3);
+	}
 }
 
 bool BossEmu::isActive() {
