@@ -42,7 +42,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="..\..\munt\mt32emu\src;..\mt32emu_bossemu_tester"
+				AdditionalIncludeDirectories="..\..\munt\mt32emu\src;..\..\munt_devel\BossEmu"
 				PreprocessorDefinitions="WIN32;_DEBUG"
 				MinimalRebuild="true"
 				RuntimeLibrary="3"
@@ -118,7 +118,7 @@
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
-				AdditionalIncludeDirectories="..\..\munt\mt32emu\src;..\mt32emu_bossemu_tester"
+				AdditionalIncludeDirectories="..\..\munt\mt32emu\src;..\..\munt_devel\BossEmu"
 				PreprocessorDefinitions="WIN32;NDEBUG"
 				RuntimeLibrary="2"
 				UsePrecompiledHeader="2"
@@ -202,7 +202,7 @@
 			UniqueIdentifier="{4FC737F1-C7A5-4376-A066-2A32D752A2FF}"
 			>
 			<File
-				RelativePath="..\mt32emu_bossemu_tester\BossEmu.cpp"
+				RelativePath="..\..\munt_devel\BossEmu\BossEmu.cpp"
 				>
 				<FileConfiguration
 					Name="Debug|Win32"
@@ -222,11 +222,11 @@
 				</FileConfiguration>
 			</File>
 			<File
-				RelativePath=".\mt32emu_breverb_comparator.cpp"
+				RelativePath="..\..\munt_devel\mt32emu_breverb_comparator\mt32emu_breverb_comparator.cpp"
 				>
 			</File>
 			<File
-				RelativePath=".\stdafx.cpp"
+				RelativePath="..\..\munt_devel\mt32emu_breverb_comparator\stdafx.cpp"
 				>
 				<FileConfiguration
 					Name="Debug|Win32"
@@ -252,11 +252,11 @@
 			UniqueIdentifier="{93995380-89BD-4b04-88EB-625FBE52EBFB}"
 			>
 			<File
-				RelativePath="..\mt32emu_bossemu_tester\BossEmu.h"
+				RelativePath="..\..\munt_devel\BossEmu\BossEmu.h"
 				>
 			</File>
 			<File
-				RelativePath=".\stdafx.h"
+				RelativePath="..\..\munt_devel\mt32emu_breverb_comparator\stdafx.h"
 				>
 			</File>
 		</Filter>
