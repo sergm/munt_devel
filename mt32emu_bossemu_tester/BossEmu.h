@@ -27,6 +27,7 @@ public:
 	BossEmu(const unsigned char rom[], int length, EMU_MODE emuMode = MT32_EMU_MODE);
 	~BossEmu();
 	void setParameters(int mode, int time, int level);
+	void setRawParameters(int programIx, int sawBitIx);
 	bool isActive();
 	void process(const short *inLeft, const short *inRight, short *outLeft, short *outRight, int length);
 

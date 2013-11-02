@@ -14,26 +14,38 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+/* BossEmu aims to provide for accurate emulation of BOSS reverb gate array HG61H20R36F aka BOS-007
+ * using an image of the reverb ROM.
+ */
+
 #include <cstdio>
 #include <cstring>
 
 #include "BossEmu.h"
 
+// Enables debugging trace of internal state
 //#define DEBUG
 
 static const int MIN_ROM_SIZE = 0x4000;
 static const int MAX_ROM_SIZE = 0x8000;
 static const int RAM_SIZE = 0x4000;
+
+// Hardwired constant
 static const int PROCESSING_LOOP_CYCLES = 0x100;
-static const int MAX_RIGHT_DATA_IN_CYCLE = 0x80; // FIXME: Is this different in Boss h/w other than MT-32/CM-32L?
+// FIXME: Is this different in Boss h/w other than MT-32/CM-32L?
+static const int MAX_RIGHT_DATA_IN_CYCLE = 0x80;
+// The ouput points seem to be hardwired
 static const int RIGHT_DATA_OUT_CYCLE = 0xBC;
 static const int LEFT_DATA_OUT_CYCLE = 0xE0;
 
+// Meaning of control bits. Three higher bits used to form saw mask.
 static const int DATA_BIT = 0x01;
 static const int WRITE_BIT = 0x02;
 static const int SHIFTER_BIT = 0x04;
 static const int INVERSION_BIT = 0x08;
 static const int ACCUMULATOR_OUT_BIT = 0x10;
+
+static const int ACTIVITY_THRESHOLD = 8;
 
 BossEmu::BossEmu(const unsigned char useROM[], const int length, const EMU_MODE useEmuMode) : emuMode(useEmuMode) {
 	if (useROM == NULL || (length != MIN_ROM_SIZE && length != MAX_ROM_SIZE)) {
@@ -58,29 +70,40 @@ BossEmu::~BossEmu() {
 	if (ram != NULL) delete ram;
 }
 
+// Program and saw bits can be set directly for currently unsupported units
+void BossEmu::setRawParameters(int programIx, int sawBitIx) {
+	romBaseIx = (extendedModesEnabled ? programIx & 0x7F : programIx & 0x3F) << 8;
+	sawBits = 1 << (sawBitIx & 3);
+}
+
+// Deal with higher level parameters.
+// In RV-2 output level is controlled in analogue, so it is ignored.
 void BossEmu::setParameters(int mode, int time, int level) {
 	if (emuMode == MT32_EMU_MODE) {
 		mode = extendedModesEnabled ? mode & 7 : mode & 3;
 		romBaseIx = (mode << 12) | ((level & 7) << 9) | ((time & 4) << 6);
 		sawBits = 1 << (time & 3);
 	} else if (emuMode == RV_2_EMU_MODE) {
-		mode = extendedModesEnabled ? mode & 0xF : mode & 7;
+		mode = extendedModesEnabled ? mode & 0x10 : mode & 0x0F;
 		romBaseIx = (mode << 10) | ((time & 0x0C) << 6);
 		sawBits = 1 << (time & 3);
 	}
 }
 
+// Checks whether the buffer contains data above the activity threshold.
+// Note that in most modes RAM is never empty due to unsymmetrical inversion in the first all-pass filter implementation.
+// In delay modes RAM eventually can end up empty when there is no input signal.
 bool BossEmu::isActive() {
 	if (ram != NULL) {
 		for (int i = 0; i < RAM_SIZE; ++i) {
-			if (ram[i] < -8 || 8 < ram[i]) return true;
+			if (ram[i] < -ACTIVITY_THRESHOLD || ACTIVITY_THRESHOLD < ram[i]) return true;
 		}
 	}
 	return false;
 }
 
 void BossEmu::process(const short *inLeft, const short *inRight, short *outLeft, short *outRight, int length) {
-	if (ram == NULL || inLeft == NULL || inRight == NULL) {
+	if (ram == NULL) {
 		if (outLeft != NULL) {
 			memset(outLeft, 0, sizeof(short) * length);
 		}
@@ -91,15 +114,23 @@ void BossEmu::process(const short *inLeft, const short *inRight, short *outLeft,
 	}
 
 	while (length > 0) {
+		/* NOTE: Actual values at the io bus are biased unsigned to be used as a DAC input directly.
+		 *       They are implicitly unbiased and shifted right by 1 bit.
+		 *       Although it's somewhat inaccurate, but it seems more convenient to use signed values as the emulation input.
+		 *       The right shift is applied to preserve correct precision and output volume.
+		 */
+		short inputLeft = (inLeft != NULL) ? (*inLeft >> 1) : 0;
+		short inputRight = (inRight != NULL) ? (*inRight >> 1) : 0;
+
 		for (int cycleIx = 0; cycleIx < PROCESSING_LOOP_CYCLES; cycleIx += 4) {
 			// Implicit program points of output to data bus latch
-			if (cycleIx == RIGHT_DATA_OUT_CYCLE) {
+			if ((cycleIx == RIGHT_DATA_OUT_CYCLE) && (outRight != NULL)) {
 				*outRight = accumulator;
-			} else if (cycleIx == LEFT_DATA_OUT_CYCLE) {
+			} else if ((cycleIx == LEFT_DATA_OUT_CYCLE) && (outLeft != NULL)) {
 				*outLeft = accumulator;
 			}
 
-			processingCycle(cycleIx, (cycleIx < MAX_RIGHT_DATA_IN_CYCLE) ? *inRight : *inLeft);
+			processingCycle(cycleIx, (cycleIx < MAX_RIGHT_DATA_IN_CYCLE) ? inputRight : inputLeft);
 		}
 
 		--length;
