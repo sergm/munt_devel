@@ -1,4 +1,4 @@
-/* Copyright (C) 2013 Sergey V. Mikayev
+/* Copyright (C) 2013, 2014 Sergey V. Mikayev
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU Lesser General Public License as published by
@@ -201,8 +201,9 @@ void BossEmu::updateAccumulator(const unsigned char controlBits, const int shift
 	}
 
 	if ((shifterMask & sawBits) != 0) {
-		// Need to add shifter
-		accumulator += shifter + carry;
+		// Need to add shifter (addition is performed with saturation)
+		int sum = (int)accumulator + (int)shifter + carry;
+		accumulator = (sum < -0x8000) ? -0x8000 : (0x7fff < sum) ? 0x7fff : sum;
 	}
 
 	// FIXME: Is inversion without addition permitted?
