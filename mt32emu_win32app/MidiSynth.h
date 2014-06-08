@@ -1,4 +1,4 @@
-/* Copyright (C) 2011 Sergey V. Mikayev
+/* Copyright (C) 2011, 2012, 2013 Sergey V. Mikayev
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU Lesser General Public License as published by
@@ -24,11 +24,14 @@ namespace MT32Emu {
 class MidiSynth {
 private:
 	unsigned int sampleRate;
-	unsigned int len;
-	unsigned int latency;
-	char pathToROMfiles[256];
+	unsigned int midiLatency;
+	unsigned int bufferSize;
+	unsigned int chunkSize;
+	bool useRingBuffer;
 	bool resetEnabled;
+
 	DACInputMode emuDACInputMode;
+	MIDIDelayMode midiDelayMode;
 	float outputGain;
 	float reverbOutputGain;
 	bool reverbEnabled;
@@ -36,44 +39,34 @@ private:
 	Bit8u reverbMode;
 	Bit8u reverbTime;
 	Bit8u reverbLevel;
+	unsigned int reverbCompatibilityMode;
+	bool reversedStereoEnabled;
 
-	Bit16s *stream;
-
-	bool pendingClose;
-	DWORD playCursor;
+	Bit16s *buffer;
+	volatile UINT64 renderedFramesCount;
 
 	Synth *synth;
+	const ROMImage *controlROM;
+	const ROMImage *pcmROM;
 
+	unsigned int MillisToFrames(unsigned int millis);
 	void LoadSettings();
 	void ReloadSettings();
 	void ApplySettings();
 
-#if MT32EMU_USE_EXTINT == 1
-	MT32Emu::ExternalInterface *mt32emuExtInt;
-#endif
+	MidiSynth();
 
 public:
-
-	MidiSynth();
+	static MidiSynth &getInstance();
 	int Init();
-	int Close();
+	void Close();
+	void FreeROMImages();
 	int Reset();
-	void StoreSettings(
-		int newSampleRate,
-		int newLatency,
-		bool newReverbEnabled,
-		bool newReverbOverridden,
-		int newReverbMode,
-		int newReverbTime,
-		int newReverbLevel,
-		int newOutputGain,
-		int newReverbGain,
-		int newDACInputMode);
-	void Render();
-	void PushMIDI(DWORD msg);
-	void PlaySysex(Bit8u *bufpos, DWORD len);
-	bool IsPendingClose();
-	void handleReport(MT32Emu::ReportType type, const void *reportData);
+	void RenderAvailableSpace();
+	void Render(Bit16s *bufpos, DWORD totalFrames);
+	Bit32u getMIDIEventTimestamp();
+	void PlayMIDI(DWORD msg);
+	void PlaySysex(const Bit8u *bufpos, DWORD len);
 };
 
 }

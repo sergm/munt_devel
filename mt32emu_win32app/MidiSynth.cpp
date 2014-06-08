@@ -1,4 +1,4 @@
-/* Copyright (C) 2011 Sergey V. Mikayev
+/* Copyright (C) 2011, 2012, 2013 Sergey V. Mikayev
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU Lesser General Public License as published by
@@ -18,63 +18,23 @@
 
 namespace MT32Emu {
 
-MidiSynth *midiSynth;
+static const char MT32EMU_REGISTRY_PATH[] = "Software\\muntemu.org\\Munt mt32emu-qt";
+static const char MT32EMU_REGISTRY_DRIVER_SUBKEY[] = "waveout";
+static const char MT32EMU_REGISTRY_MASTER_SUBKEY[] = "Master";
+static const char MT32EMU_REGISTRY_PROFILES_SUBKEY[] = "Profiles";
 
-//#define	DRIVER_MODE
-#define	MIN_RENDER_MS 10	// rendering time
-#define	MIDI_LATENCY_MS 10
+// Each frame consists of two samples for both the Left and Right channels
+static const unsigned int SAMPLES_PER_FRAME = 2;
 
-class MidiStream {
-private:
-	static const unsigned int maxPos = 1024;
-	unsigned int startpos;
-	unsigned int endpos;
-	DWORD stream[maxPos][2];
-public:
-	MidiStream() {
-		startpos = 0;
-		endpos = 0;
-	}
+enum ReverbCompatibilityMode {
+	ReverbCompatibilityMode_DEFAULT,
+	ReverbCompatibilityMode_MT32,
+	ReverbCompatibilityMode_CM32L
+};
 
-	DWORD PutMessage(DWORD msg, DWORD timestamp) {
-		unsigned int newEndpos = endpos;
+static MidiSynth &midiSynth = MidiSynth::getInstance();
 
-		newEndpos++;
-		if (newEndpos == maxPos) // check for buffer rolloff
-			newEndpos = 0;
-		if (startpos == newEndpos) // check for buffer full
-			return -1;
-		stream[endpos][0] = msg;	// ok to put data and update endpos
-		stream[endpos][1] = timestamp;
-		endpos = newEndpos;
-		return 0;
-	}
-
-	DWORD GetMessage() {
-		if (startpos == endpos) // check for buffer empty
-			return -1;
-		DWORD msg = stream[startpos][0];
-		startpos++;
-		if (startpos == maxPos) // check for buffer rolloff
-			startpos = 0;
-		return msg;
-	}
-
-	DWORD PeekMessageTime() {
-		if (startpos == endpos) // check for buffer empty
-			return -1;
-		return stream[startpos][1];
-	}
-
-	DWORD PeekMessageTimeAt(unsigned int pos) {
-		if (startpos == endpos) // check for buffer empty
-			return -1;
-		unsigned int peekPos = (startpos + pos) % maxPos;
-		return stream[peekPos][1];
-	}
-} midiStream;
-
-class SynthEventWin32 {
+static class SynthEventWin32 {
 private:
 	HANDLE hEvent;
 
@@ -82,7 +42,7 @@ public:
 	int Init() {
 		hEvent = CreateEvent(NULL, false, true, NULL);
 		if (hEvent == NULL) {
-			MessageBox(NULL, L"Can't create sync object", NULL, MB_OK | MB_ICONEXCLAMATION);
+			MessageBox(NULL, L"Can't create sync object", L"MT32", MB_OK | MB_ICONEXCLAMATION);
 			return 1;
 		}
 		return 0;
@@ -101,74 +61,111 @@ public:
 	}
 } synthEvent;
 
-class WaveOutWin32 {
+static class WaveOutWin32 {
 private:
 	HWAVEOUT	hWaveOut;
-	WAVEHDR		WaveHdr;
-	DWORD			prevPlayPos;
-	DWORD			getPosWraps;
+	WAVEHDR		*WaveHdr;
+	HANDLE		hEvent;
+	DWORD		chunks;
+
+	volatile UINT64 prevPlayPosition;
+	volatile bool stopProcessing;
 
 public:
-	int Init(Bit16s *stream, unsigned int len, unsigned int sampleRate) {
-		int wResult;
+	int Init(Bit16s *buffer, unsigned int bufferSize, unsigned int chunkSize, bool useRingBuffer, unsigned int sampleRate) {
+		DWORD callbackType = CALLBACK_NULL;
+		DWORD_PTR callback = NULL;
+		hEvent = NULL;
+		if (!useRingBuffer) {
+			hEvent = CreateEvent(NULL, false, true, NULL);
+			callback = (DWORD_PTR)hEvent;
+			callbackType = CALLBACK_EVENT;
+		}
+
 		PCMWAVEFORMAT wFormat = {WAVE_FORMAT_PCM, 2, sampleRate, sampleRate * 4, 4, 16};
 
-		//	Open waveout device
-		wResult = waveOutOpen(&hWaveOut, WAVE_MAPPER, (LPWAVEFORMATEX)&wFormat, NULL, (DWORD_PTR)&midiSynth, CALLBACK_NULL);
+		// Open waveout device
+		int wResult = waveOutOpen(&hWaveOut, WAVE_MAPPER, (LPWAVEFORMATEX)&wFormat, callback, (DWORD_PTR)&midiSynth, callbackType);
 		if (wResult != MMSYSERR_NOERROR) {
-			MessageBox(NULL, L"Failed to open waveform output device.", NULL, MB_OK | MB_ICONEXCLAMATION);
+			MessageBox(NULL, L"Failed to open waveform output device", L"MT32", MB_OK | MB_ICONEXCLAMATION);
 			return 2;
 		}
 
-		//	Prepare header
-		WaveHdr.dwBufferLength = 4 * len;
-		WaveHdr.lpData = (LPSTR)stream;
-		WaveHdr.dwFlags = WHDR_BEGINLOOP | WHDR_ENDLOOP;
-		WaveHdr.dwLoops = -1;
-		wResult = waveOutPrepareHeader(hWaveOut, &WaveHdr, sizeof(WAVEHDR));
-		if (wResult != MMSYSERR_NOERROR) {
-			MessageBox(NULL, L"Failed to Prepare Header 1", NULL, MB_OK | MB_ICONEXCLAMATION);
-			return 3;
+		// Prepare headers
+		chunks = useRingBuffer ? 1 : bufferSize / chunkSize;
+		WaveHdr = new WAVEHDR[chunks];
+		LPSTR chunkStart = (LPSTR)buffer;
+		DWORD chunkBytes = 4 * chunkSize;
+		for (UINT i = 0; i < chunks; i++) {
+			if (useRingBuffer) {
+				WaveHdr[i].dwBufferLength = 4 * bufferSize;
+				WaveHdr[i].lpData = chunkStart;
+				WaveHdr[i].dwFlags = WHDR_BEGINLOOP | WHDR_ENDLOOP;
+				WaveHdr[i].dwLoops = -1L;
+			} else {
+				WaveHdr[i].dwBufferLength = chunkBytes;
+				WaveHdr[i].lpData = chunkStart;
+				WaveHdr[i].dwFlags = 0L;
+				WaveHdr[i].dwLoops = 0L;
+				chunkStart += chunkBytes;
+			}
+			wResult = waveOutPrepareHeader(hWaveOut, &WaveHdr[i], sizeof(WAVEHDR));
+			if (wResult != MMSYSERR_NOERROR) {
+				MessageBox(NULL, L"Failed to Prepare Header", L"MT32", MB_OK | MB_ICONEXCLAMATION);
+				return 3;
+			}
 		}
+		stopProcessing = false;
 		return 0;
 	}
 
 	int Close() {
-		int wResult;
-
-		wResult = waveOutReset(hWaveOut);
+		stopProcessing = true;
+		SetEvent(hEvent);
+		int wResult = waveOutReset(hWaveOut);
 		if (wResult != MMSYSERR_NOERROR) {
-			MessageBox(NULL, L"Failed to Reset WaveOut", NULL, MB_OK | MB_ICONEXCLAMATION);
+			MessageBox(NULL, L"Failed to Reset WaveOut", L"MT32", MB_OK | MB_ICONEXCLAMATION);
 			return 8;
 		}
 
-		wResult = waveOutUnprepareHeader(hWaveOut, &WaveHdr, sizeof(WAVEHDR));
-		if (wResult != MMSYSERR_NOERROR) {
-			MessageBox(NULL, L"Failed to Unprepare Wave Header", NULL, MB_OK | MB_ICONEXCLAMATION);
-			return 8;
+		for (UINT i = 0; i < chunks; i++) {
+			wResult = waveOutUnprepareHeader(hWaveOut, &WaveHdr[i], sizeof(WAVEHDR));
+			if (wResult != MMSYSERR_NOERROR) {
+				MessageBox(NULL, L"Failed to Unprepare Wave Header", L"MT32", MB_OK | MB_ICONEXCLAMATION);
+				return 8;
+			}
 		}
+		delete[] WaveHdr;
+		WaveHdr = NULL;
 
 		wResult = waveOutClose(hWaveOut);
 		if (wResult != MMSYSERR_NOERROR) {
-			MessageBox(NULL, L"Failed to Close WaveOut", NULL, MB_OK | MB_ICONEXCLAMATION);
+			MessageBox(NULL, L"Failed to Close WaveOut", L"MT32", MB_OK | MB_ICONEXCLAMATION);
 			return 8;
+		}
+		if (hEvent != NULL) {
+			CloseHandle(hEvent);
+			hEvent = NULL;
 		}
 		return 0;
 	}
 
 	int Start() {
-		getPosWraps = 0;
-		prevPlayPos = 0;
-		if (waveOutWrite(hWaveOut, &WaveHdr, sizeof(WAVEHDR)) != MMSYSERR_NOERROR) {
-			MessageBox(NULL, L"Failed to write block to device", NULL, MB_OK | MB_ICONEXCLAMATION);
-			return 4;
+		prevPlayPosition = 0;
+		for (UINT i = 0; i < chunks; i++) {
+			if (waveOutWrite(hWaveOut, &WaveHdr[i], sizeof(WAVEHDR)) != MMSYSERR_NOERROR) {
+				MessageBox(NULL, L"Failed to write block to device", L"MT32", MB_OK | MB_ICONEXCLAMATION);
+				return 4;
+			}
 		}
+		HANDLE hThread = (HANDLE)_beginthread(RenderingThread, 16384, this);
+		SetThreadPriority(hThread, THREAD_PRIORITY_TIME_CRITICAL);
 		return 0;
 	}
 
 	int Pause() {
 		if (waveOutPause(hWaveOut) != MMSYSERR_NOERROR) {
-			MessageBox(NULL, L"Failed to Pause wave playback", NULL, MB_OK | MB_ICONEXCLAMATION);
+			MessageBox(NULL, L"Failed to Pause wave playback", L"MT32", MB_OK | MB_ICONEXCLAMATION);
 			return 9;
 		}
 		return 0;
@@ -176,182 +173,260 @@ public:
 
 	int Resume() {
 		if (waveOutRestart(hWaveOut) != MMSYSERR_NOERROR) {
-			MessageBox(NULL, L"Failed to Pause wave playback", NULL, MB_OK | MB_ICONEXCLAMATION);
+			MessageBox(NULL, L"Failed to Resume wave playback", L"MT32", MB_OK | MB_ICONEXCLAMATION);
 			return 9;
 		}
 		return 0;
 	}
 
 	UINT64 GetPos() {
+		static const DWORD WRAP_BITS = 27;
+		static const UINT64 WRAP_MASK = (1 << 27) - 1;
+		static const int WRAP_THRESHOLD = 1 << (WRAP_BITS - 1);
+
+		// Taking a snapshot to avoid possible thread interference
+		UINT64 playPositionSnapshot = prevPlayPosition;
+		DWORD wrapCount = DWORD(playPositionSnapshot >> WRAP_BITS);
+		DWORD wrappedPosition = DWORD(playPositionSnapshot & WRAP_MASK);
+
 		MMTIME mmTime;
 		mmTime.wType = TIME_SAMPLES;
 
 		if (waveOutGetPosition(hWaveOut, &mmTime, sizeof MMTIME) != MMSYSERR_NOERROR) {
-			MessageBox(NULL, L"Failed to get current playback position", NULL, MB_OK | MB_ICONEXCLAMATION);
+			MessageBox(NULL, L"Failed to get current playback position", L"MT32", MB_OK | MB_ICONEXCLAMATION);
 			return 10;
 		}
 		if (mmTime.wType != TIME_SAMPLES) {
-			MessageBox(NULL, L"Failed to get # of samples played", NULL, MB_OK | MB_ICONEXCLAMATION);
+			MessageBox(NULL, L"Failed to get # of samples played", L"MT32", MB_OK | MB_ICONEXCLAMATION);
 			return 10;
 		}
+		mmTime.u.sample &= WRAP_MASK;
 
 		// Deal with waveOutGetPosition() wraparound. For 16-bit stereo output, it equals 2^27,
 		// presumably caused by the internal 32-bit counter of bits played.
 		// The output of that nasty waveOutGetPosition() isn't monotonically increasing
 		// even during 2^27 samples playback, so we have to ensure the difference is big enough...
-		int delta = mmTime.u.sample - prevPlayPos;
-		if (delta < -(1 << 26)) {
-			std::cout << "GetPos() wrap: " << delta << "\n";
-			++getPosWraps;
+		int delta = mmTime.u.sample - wrappedPosition;
+		if (delta < -WRAP_THRESHOLD) {
+#ifdef ENABLE_DEBUG_OUTPUT
+			std::cout << "MT32: GetPos() wrap: " << delta << "\n";
+#endif
+			++wrapCount;
+		} else if (delta < 0) {
+			// This ensures the return is monotonically increased
+#ifdef ENABLE_DEBUG_OUTPUT
+			std::cout << "MT32: GetPos() went back by " << delta << " samples\n";
+#endif
+			return playPositionSnapshot;
 		}
-		prevPlayPos = mmTime.u.sample;
-		return mmTime.u.sample + getPosWraps * (1 << 27);
+		prevPlayPosition = playPositionSnapshot = mmTime.u.sample + (wrapCount << WRAP_BITS);
+		return playPositionSnapshot;
+	}
+
+	static void RenderingThread(void *) {
+		if (waveOut.chunks == 1) {
+			// Rendering using single looped ring buffer
+			while (!waveOut.stopProcessing) {
+				midiSynth.RenderAvailableSpace();
+			}
+		} else {
+			while (!waveOut.stopProcessing) {
+				bool allBuffersRendered = true;
+				for (UINT i = 0; i < waveOut.chunks; i++) {
+					if (waveOut.WaveHdr[i].dwFlags & WHDR_DONE) {
+						allBuffersRendered = false;
+						midiSynth.Render((Bit16s *)waveOut.WaveHdr[i].lpData, waveOut.WaveHdr[i].dwBufferLength / 4);
+						if (waveOutWrite(waveOut.hWaveOut, &waveOut.WaveHdr[i], sizeof(WAVEHDR)) != MMSYSERR_NOERROR) {
+							MessageBox(NULL, L"Failed to write block to device", L"MT32", MB_OK | MB_ICONEXCLAMATION);
+						}
+					}
+				}
+				if (allBuffersRendered) {
+					// Ensure the playback position is monitored frequently enough in order not to miss a wraparound
+					waveOut.GetPos();
+					WaitForSingleObject(waveOut.hEvent, INFINITE);
+				}
+			}
+		}
 	}
 } waveOut;
 
-#ifdef DRIVER_MODE
-void printDebug(void *userData, const char *fmt, va_list list) {
-}
-#else
-#define printDebug NULL
-#endif
-
-int MT32_Report(void *userData, ReportType type, const void *reportData) {
-#if MT32EMU_USE_EXTINT == 1
-	midiSynth->handleReport(type, reportData);
-#endif
-	switch(type) {
-	case MT32Emu::ReportType_errorControlROM:
-		std::cout << "MT32: Couldn't find Control ROM file\n";
-		break;
-	case MT32Emu::ReportType_errorPCMROM:
-		std::cout << "MT32: Couldn't open PCM ROM file\n";
-		break;
-	case MT32Emu::ReportType_lcdMessage:
-		std::cout << "MT32: LCD-Message: " << (char *)reportData << "\n";
-		break;
-	default:
-		//LOG(LOG_ALL,LOG_NORMAL)("MT32: Report %d",type);
-		break;
+static class : public ReportHandler {
+protected:
+	virtual void onErrorControlROM() {
+		MessageBox(NULL, L"Couldn't open Control ROM file", L"MT32", MB_OK | MB_ICONEXCLAMATION);
 	}
-	return 0;
-}
 
-void MidiSynth::handleReport(ReportType type, const void *reportData) {
-#if MT32EMU_USE_EXTINT == 1
-	mt32emuExtInt->handleReport(synth, type, reportData);
-#endif
-}
-
-void render(void *) {
-	midiSynth->Render();
-}
-
-void MidiSynth::Render() {
-	DWORD timeStamp;
-	Bit16s *bufpos;
-	DWORD buflen;
-	DWORD minSamplesToRender = (MIN_RENDER_MS * sampleRate) / 1000;
-	DWORD midiLatency = (MIDI_LATENCY_MS * sampleRate) / 1000;
-
-	while (!pendingClose) {
-		bufpos = stream + 2 * playCursor;
-		timeStamp = waveOut.GetPos() % len;
-
-		if (timeStamp < playCursor) {
-			// Buffer wrap, render 'till the end of buffer
-			buflen = len - playCursor;
-		} else {
-			buflen = timeStamp - playCursor;
-			if (buflen < minSamplesToRender) {
-				Sleep(1 + (minSamplesToRender - buflen) * 1000 / sampleRate);
-				continue;
-			}
-		}
-
-		for(;;) {
-			timeStamp = midiStream.PeekMessageTime();
-			if (timeStamp == -1) {	// if midiStream is empty - exit
-				break;
-			}
-
-			//	render samples from playCursor to current midiMessage timeStamp
-			DWORD playlen = (timeStamp + midiLatency) % len - playCursor;
-			if (playlen > buflen) {	// if midiMessage is too far - exit
-				break;
-			}
-			if (playlen > 0) {		// if midiMessage with same timeStamp - skip rendering
-				synthEvent.Wait();
-				synth->render(bufpos, playlen);
-				synthEvent.Release();
-				playCursor += playlen;
-				bufpos += 2 * playlen;
-				buflen -= playlen;
-			}
-
-			// play midiMessage
-			DWORD msg = midiStream.GetMessage();
-			synthEvent.Wait();
-			synth->playMsg(msg);
-			synthEvent.Release();
-		}
-
-		//	render rest of samples
-		synthEvent.Wait();
-		synth->render(bufpos, buflen);
-		synthEvent.Release();
-		playCursor += buflen;
-		if (playCursor >= len) {
-			playCursor -= len;
-		}
-#if MT32EMU_USE_EXTINT == 1
-		if (mt32emuExtInt != NULL) {
-			mt32emuExtInt->doControlPanelComm(synth, 4 * len);
-		}
-#endif
+	virtual void onErrorPCMROM() {
+		MessageBox(NULL, L"Couldn't open PCM ROM file", L"MT32", MB_OK | MB_ICONEXCLAMATION);
 	}
+
+	virtual void showLCDMessage(const char *message) {
+		std::cout << "MT32: LCD-Message: " << message << "\n";
+	}
+
+#ifndef ENABLE_DEBUG_OUTPUT
+	void printDebug(const char *fmt, va_list list) {}
+#endif
+} reportHandler;
+
+MidiSynth::MidiSynth() {}
+
+MidiSynth &MidiSynth::getInstance() {
+	static MidiSynth *instance = new MidiSynth;
+	return *instance;
 }
 
-MidiSynth::MidiSynth() {
-	midiSynth = this;
+// Renders all the available space in the single looped ring buffer
+void MidiSynth::RenderAvailableSpace() {
+	DWORD playPosition = waveOut.GetPos() % bufferSize;
+	DWORD renderPosition = DWORD(renderedFramesCount % bufferSize);
+	DWORD framesToRender;
+
+	if (playPosition < renderPosition) {
+		// Buffer wrap, render 'till the end of the buffer
+		framesToRender = bufferSize - renderPosition;
+	} else {
+		framesToRender = playPosition - renderPosition;
+		if (framesToRender < chunkSize) {
+			Sleep(1 + (chunkSize - framesToRender) * 1000 / sampleRate);
+			return;
+		}
+	}
+	midiSynth.Render(buffer + SAMPLES_PER_FRAME * renderPosition, framesToRender);
 }
 
-int LoadIntValue(char *key, int nDefault) {
-	return GetPrivateProfileIntA("mt32emu", key, nDefault, "mt32emu.ini");
+// Renders totalFrames frames starting from bufpos
+// The number of frames rendered is added to the global counter framesRendered
+void MidiSynth::Render(Bit16s *bufpos, DWORD framesToRender) {
+	synthEvent.Wait();
+	synth->render(bufpos, framesToRender);
+	synthEvent.Release();
+	renderedFramesCount += framesToRender;
 }
 
-DWORD LoadStringValue(char *key, char *nDefault, char *destination, DWORD nSize) {
-	return GetPrivateProfileStringA("mt32emu", key, nDefault, destination, nSize, "mt32emu.ini");
+static bool LoadBoolValue(HKEY hReg, const char *name, const bool nDefault) {
+	if (hReg != NULL) {
+		char destination[6];
+		DWORD nSize = sizeof(destination);
+		DWORD type;
+		LSTATUS res = RegQueryValueExA(hReg, name, NULL, &type, (LPBYTE)destination, &nSize);
+		if (res == ERROR_SUCCESS && type == REG_SZ) {
+			return destination[0] != '0' && (destination[0] & 0xDF) != 'F';
+		}
+	}
+	return nDefault;
+}
+
+static int LoadIntValue(HKEY hReg, const char *name, const int nDefault) {
+	if (hReg != NULL) {
+		DWORD destination = 0;
+		DWORD nSize = sizeof(DWORD);
+		DWORD type;
+		LSTATUS res = RegQueryValueExA(hReg, name, NULL, &type, (LPBYTE)&destination, &nSize);
+		if (res == ERROR_SUCCESS && type == REG_DWORD) {
+			return destination;
+		}
+	}
+	return nDefault;
+}
+
+static float LoadFloatValue(HKEY hReg, const char *name, const float nDefault) {
+	if (hReg != NULL) {
+		float value = nDefault;
+		char destination[32];
+		DWORD nSize = sizeof(destination);
+		DWORD type;
+		LSTATUS res = RegQueryValueExA(hReg, name, NULL, &type, (LPBYTE)&destination, &nSize);
+		if (res == ERROR_SUCCESS && type == REG_SZ && sscanf_s(destination, "%f", &value) == 1) {
+			return value;
+		}
+	}
+	return nDefault;
+}
+
+static DWORD LoadStringValue(HKEY hReg, const char *name, const char *nDefault, char *destination, DWORD nSize) {
+	if (hReg != NULL) {
+		DWORD type;
+		LSTATUS res = RegQueryValueExA(hReg, name, NULL, &type, (LPBYTE)destination, &nSize);
+		if (res == ERROR_SUCCESS && type == REG_SZ) {
+			return nSize - 1;
+		}
+	}
+	lstrcpynA(destination, nDefault, nSize);
+	destination[nSize - 1] = 0;
+	return lstrlenA(destination);
+}
+
+unsigned int MidiSynth::MillisToFrames(unsigned int millis) {
+	return UINT(sampleRate * millis / 1000.f);
 }
 
 void MidiSynth::LoadSettings() {
-	sampleRate = LoadIntValue("SampleRate", 32000);
-	latency = LoadIntValue("Latency", 90);
-	len = UINT(sampleRate * latency / 1000.f);
+	HKEY hReg;
+	if (RegOpenKeyA(HKEY_CURRENT_USER, MT32EMU_REGISTRY_PATH, &hReg)) {
+		hReg = NULL;
+	}
+	HKEY hRegDriver;
+	if (hReg == NULL || RegOpenKeyA(hReg, MT32EMU_REGISTRY_DRIVER_SUBKEY, &hRegDriver)) {
+		hRegDriver = NULL;
+	}
+	RegCloseKey(hReg);
+	hReg = NULL;
+	sampleRate = SAMPLE_RATE;
+	// Approx. bufferSize derived from latency
+	bufferSize = MillisToFrames(LoadIntValue(hRegDriver, "AudioLatency", 100));
+	chunkSize = MillisToFrames(LoadIntValue(hRegDriver, "ChunkLen", 10));
+	midiLatency = MillisToFrames(LoadIntValue(hRegDriver, "MidiLatency", 0));
+	useRingBuffer = LoadBoolValue(hRegDriver, "UseRingBuffer", false);
+	RegCloseKey(hRegDriver);
+	if (useRingBuffer) {
+		std::cout << "MT32: Using looped ring buffer, buffer size: " << bufferSize << " frames, min. rendering interval: " << chunkSize <<" frames." << std::endl;
+	} else {
+		// Number of chunks should be ceil(bufferSize / chunkSize)
+		DWORD chunks = (bufferSize + chunkSize - 1) / chunkSize;
+		// Refine bufferSize as chunkSize * number of chunks, no less then the specified value
+		bufferSize = chunks * chunkSize;
+		std::cout << "MT32: Using " << chunks << " chunks, chunk size: " << chunkSize << " frames, buffer size: " << bufferSize << " frames." << std::endl;
+	}
+	synth = NULL;
+	controlROM = pcmROM = NULL;
 	ReloadSettings();
 }
 
 void MidiSynth::ReloadSettings() {
-	resetEnabled = true;
-	if (LoadIntValue("ResetEnabled", 1) == 0) {
-		resetEnabled = false;
+	HKEY hReg;
+	if (RegOpenKeyA(HKEY_CURRENT_USER, MT32EMU_REGISTRY_PATH, &hReg)) {
+		hReg = NULL;
 	}
-
-	reverbEnabled = true;
-	if (LoadIntValue("ReverbEnabled", 1) == 0) {
-		reverbEnabled = false;
+	HKEY hRegMaster;
+	if (hReg == NULL || RegOpenKeyA(hReg, MT32EMU_REGISTRY_MASTER_SUBKEY, &hRegMaster)) {
+		hRegMaster = NULL;
 	}
+	resetEnabled = !LoadBoolValue(hRegMaster, "startPinnedSynthRoute", false);
+	char profile[256];
+	LoadStringValue(hRegMaster, "defaultSynthProfile", "default", profile, sizeof(profile));
+	RegCloseKey(hRegMaster);
 
-	reverbOverridden = true;
-	if (LoadIntValue("ReverbOverridden", 0) == 0) {
-		reverbOverridden = false;
+	HKEY hRegProfiles;
+	if (hReg == NULL || RegOpenKeyA(hReg, MT32EMU_REGISTRY_PROFILES_SUBKEY, &hRegProfiles)) {
+		hRegProfiles = NULL;
 	}
+	RegCloseKey(hReg);
+	hReg = NULL;
+	HKEY hRegProfile;
+	if (hRegProfiles == NULL || RegOpenKeyA(hRegProfiles, profile, &hRegProfile)) {
+		hRegProfile = NULL;
+	}
+	RegCloseKey(hRegProfiles);
+	hRegProfiles = NULL;
+	reverbEnabled = LoadBoolValue(hRegProfile, "reverbEnabled", true);
+	reverbOverridden = LoadBoolValue(hRegProfile, "reverbOverridden", false);
+	reverbMode = LoadIntValue(hRegProfile, "reverbMode", 0);
+	reverbTime = LoadIntValue(hRegProfile, "reverbTime", 5);
+	reverbLevel = LoadIntValue(hRegProfile, "reverbLevel", 3);
 
-	reverbMode = LoadIntValue("ReverbMode", 0);
-	reverbTime = LoadIntValue("ReverbTime", 5);
-	reverbLevel = LoadIntValue("ReverbLevel", 3);
-
-	outputGain = (float)LoadIntValue("OutputGain", 100);
+	outputGain = LoadFloatValue(hRegProfile, "outputGain", 1.0f);
 	if (outputGain < 0.0f) {
 		outputGain = -outputGain;
 	}
@@ -359,7 +434,7 @@ void MidiSynth::ReloadSettings() {
 		outputGain = 1000.0f;
 	}
 
-	reverbOutputGain = (float)LoadIntValue("ReverbOutputGain", 100);
+	reverbOutputGain = LoadFloatValue(hRegProfile, "reverbOutputGain", 1.0f);
 	if (reverbOutputGain < 0.0f) {
 		reverbOutputGain = -reverbOutputGain;
 	}
@@ -367,187 +442,162 @@ void MidiSynth::ReloadSettings() {
 		reverbOutputGain = 1000.0f;
 	}
 
-	emuDACInputMode = (DACInputMode)LoadIntValue("DACInputMode", DACInputMode_GENERATION2);
+	reversedStereoEnabled = LoadBoolValue(hRegProfile, "reversedStereoEnabled", false);
 
-	DWORD s = LoadStringValue("PathToROMFiles", "C:/WINDOWS/SYSTEM32/", pathToROMfiles, 254);
-	pathToROMfiles[s] = '/';
-	pathToROMfiles[s + 1] = 0;
+	reverbCompatibilityMode = (ReverbCompatibilityMode)LoadIntValue(hRegProfile, "reverbCompatibilityMode", ReverbCompatibilityMode_DEFAULT);
+	emuDACInputMode = (DACInputMode)LoadIntValue(hRegProfile, "emuDACInputMode", DACInputMode_NICE);
+	midiDelayMode = (MIDIDelayMode)LoadIntValue(hRegProfile, "midiDelayMode", MIDIDelayMode_DELAY_SHORT_MESSAGES_ONLY);
+
+	if (!resetEnabled && synth != NULL) return;
+	char romDir[256];
+	char controlROMFileName[256];
+	char pcmROMFileName[256];
+	DWORD s = LoadStringValue(hRegProfile, "romDir", "C:/WINDOWS/SYSTEM32/", romDir, 254);
+	romDir[s] = '/';
+	romDir[s + 1] = 0;
+	LoadStringValue(hRegProfile, "controlROM", "MT32_CONTROL.ROM", controlROMFileName, 255);
+	LoadStringValue(hRegProfile, "pcmROM", "MT32_PCM.ROM", pcmROMFileName, 255);
+	RegCloseKey(hRegProfile);
+	hRegProfile = NULL;
+
+	char pathName[512];
+	lstrcpyA(pathName, romDir);
+	lstrcatA(pathName, controlROMFileName);
+	FileStream *controlROMFile = new FileStream;
+	controlROMFile->open(pathName);
+	lstrcpyA(pathName, romDir);
+	lstrcatA(pathName, pcmROMFileName);
+	FileStream *pcmROMFile = new FileStream;
+	pcmROMFile->open(pathName);
+	FreeROMImages();
+	controlROM = ROMImage::makeROMImage(controlROMFile);
+	pcmROM = ROMImage::makeROMImage(pcmROMFile);
 }
 
 void MidiSynth::ApplySettings() {
-	synth->setReverbEnabled(reverbEnabled);
 	synth->setDACInputMode(emuDACInputMode);
-	synth->setOutputGain(outputGain / 100.0f);
-	synth->setReverbOutputGain(reverbOutputGain / 147.0f);
+	synth->setMIDIDelayMode(midiDelayMode);
+	synth->setOutputGain(outputGain);
+	synth->setReverbOutputGain(reverbOutputGain);
 	if (reverbOverridden) {
 		Bit8u sysex[] = {0x10, 0x00, 0x01, reverbMode, reverbTime, reverbLevel};
 		synth->setReverbOverridden(false);
 		synth->writeSysex(16, sysex, 6);
 		synth->setReverbOverridden(true);
 	}
-}
-
-void MidiSynth::StoreSettings(
-	int newSampleRate,
-	int newLatency,
-	bool newReverbEnabled,
-	bool newReverbOverridden,
-	int newReverbMode,
-	int newReverbTime,
-	int newReverbLevel,
-	int newOutputGain,
-	int newReverbGain,
-	int newDACInputMode) {
-
-	reverbEnabled = newReverbEnabled;
 	synth->setReverbEnabled(reverbEnabled);
-
-	outputGain = (float)newOutputGain;
-	synth->setOutputGain(outputGain / 100.0f);
-
-	reverbOutputGain = (float)newReverbGain;
-	synth->setReverbOutputGain(reverbOutputGain / 147.0f);
-
-	emuDACInputMode = (DACInputMode)newDACInputMode;
-	synth->setDACInputMode(emuDACInputMode);
-
-	reverbMode = newReverbMode;
-	reverbTime = newReverbTime;
-	reverbLevel = newReverbLevel;
-	reverbOverridden = newReverbOverridden;
-	if (reverbOverridden) {
-		synthEvent.Wait();
-		Bit8u sysex[] = {0x10, 0x00, 0x01, reverbMode, reverbTime, reverbLevel};
-		synth->setReverbOverridden(false);
-		synth->writeSysex(16, sysex, 6);
-		synth->setReverbOverridden(true);
-		synthEvent.Release();
+	if (reverbCompatibilityMode == ReverbCompatibilityMode_DEFAULT) {
+		if (controlROM != NULL) {
+			synth->setReverbCompatibilityMode(controlROM->getROMInfo()->controlROMFeatures->isDefaultReverbMT32Compatible());
+		}
+	} else {
+		synth->setReverbCompatibilityMode(reverbCompatibilityMode == ReverbCompatibilityMode_MT32);
 	}
+	synth->setReversedStereoEnabled(reversedStereoEnabled);
 }
 
 int MidiSynth::Init() {
-	UINT wResult;
-
 	LoadSettings();
 
-	stream = new Bit16s[2 * len];
+	buffer = new Bit16s[SAMPLES_PER_FRAME * bufferSize];
 
-	//	Init synth
+	// Init synth
 	if (synthEvent.Init()) {
 		return 1;
 	}
-	synth = new Synth();
-	SynthProperties synthProp = {sampleRate, true, true, 0, 0, 0, pathToROMfiles,
-		NULL, MT32_Report, printDebug, NULL, NULL};
-	if (!synth->open(synthProp)) {
-		MessageBox(NULL, L"Can't open Synth", NULL, MB_OK | MB_ICONEXCLAMATION);
+	synth = new Synth(&reportHandler);
+	if (!synth->open(*controlROM, *pcmROM)) {
+		synth->close(true);
+		MessageBox(NULL, L"Can't open Synth", L"MT32", MB_OK | MB_ICONEXCLAMATION);
 		return 1;
 	}
-
 	ApplySettings();
+	FreeROMImages();
 
-	//	Init External Interface
-#if MT32EMU_USE_EXTINT == 1
-	if (mt32emuExtInt == NULL) {
-		mt32emuExtInt = new MT32Emu::ExternalInterface();
-	}
-	if (mt32emuExtInt != NULL) {
-		mt32emuExtInt->start();
-	}
-#endif
-
-	wResult = waveOut.Init(stream, len, sampleRate);
+	UINT wResult = waveOut.Init(buffer, bufferSize, chunkSize, useRingBuffer, sampleRate);
 	if (wResult) return wResult;
 
-	//	Start playing stream
-	synth->render(stream, len);
-
-	pendingClose = false;
+	// Start playing stream
+	synth->render(buffer, bufferSize);
+	renderedFramesCount = bufferSize;
 
 	wResult = waveOut.Start();
-	if (wResult) return wResult;
-
-	playCursor = 0;
-	_beginthread(render, 16384, NULL);
-	return 0;
+	return wResult;
 }
 
 int MidiSynth::Reset() {
-	UINT wResult;
-
-#ifdef DRIVER_MODE
 	ReloadSettings();
 	if (!resetEnabled) {
 		ApplySettings();
 		return 0;
 	}
-#endif
 
-	wResult = waveOut.Pause();
+	UINT wResult = waveOut.Pause();
 	if (wResult) return wResult;
 
 	synthEvent.Wait();
 	synth->close();
-	delete synth;
-
-	synth = new Synth();
-	SynthProperties synthProp = {sampleRate, true, true, 0, 0, 0, pathToROMfiles,
-		NULL, MT32_Report, printDebug, NULL, NULL};
-	if (!synth->open(synthProp)) {
-		MessageBox(NULL, L"Can't open Synth", NULL, MB_OK | MB_ICONEXCLAMATION);
+	if (!synth->open(*controlROM, *pcmROM)) {
+		synth->close(true);
+		MessageBox(NULL, L"Can't open Synth", L"MT32", MB_OK | MB_ICONEXCLAMATION);
 		return 1;
 	}
 	ApplySettings();
+	FreeROMImages();
 	synthEvent.Release();
 
 	wResult = waveOut.Resume();
-	if (wResult) return wResult;
-
 	return wResult;
 }
 
-bool MidiSynth::IsPendingClose() {
-	return pendingClose;
-}
+Bit32u MidiSynth::getMIDIEventTimestamp() {
+	// Taking a snapshot to avoid interference with the rendering thread
+	UINT64 renderedFramesCountSnapshot = renderedFramesCount;
+	Bit32u renderPosition = Bit32u(renderedFramesCountSnapshot % bufferSize);
 
-void MidiSynth::PushMIDI(DWORD msg) {
-	midiStream.PutMessage(msg, waveOut.GetPos() % len);
-}
-
-void MidiSynth::PlaySysex(Bit8u *bufpos, DWORD len) {
-	synthEvent.Wait();
-	synth->playSysex(bufpos, len);
-	synthEvent.Release();
-}
-
-int MidiSynth::Close() {
-	UINT wResult;
-	pendingClose = true;
-
-	// Close External Interface
-#if MT32EMU_USE_EXTINT == 1
-	if(mt32emuExtInt != NULL) {
-		mt32emuExtInt->stop();
-		delete mt32emuExtInt;
-		mt32emuExtInt = NULL;
+	// Using relative play position helps to keep correct timing after underruns
+	Bit32u playPosition = Bit32u(waveOut.GetPos() % bufferSize);
+	if (playPosition < renderPosition) {
+		playPosition += bufferSize;
 	}
-#endif
+	return Bit32u(renderedFramesCountSnapshot - renderPosition) + playPosition + midiLatency;
+}
 
-	wResult = waveOut.Pause();
-	if (wResult) return wResult;
+void MidiSynth::PlayMIDI(DWORD msg) {
+	synth->playMsg(msg, getMIDIEventTimestamp());
+}
 
-	wResult = waveOut.Close();
-	if (wResult) return wResult;
+void MidiSynth::PlaySysex(const Bit8u *bufpos, DWORD len) {
+	synth->playSysex(bufpos, len, getMIDIEventTimestamp());
+}
 
+void MidiSynth::FreeROMImages() {
+	if (controlROM != NULL) {
+		controlROM->getFile()->close();
+		delete controlROM->getFile();
+		ROMImage::freeROMImage(controlROM);
+		controlROM = NULL;
+	}
+	if (pcmROM != NULL) {
+		pcmROM->getFile()->close();
+		delete pcmROM->getFile();
+		ROMImage::freeROMImage(pcmROM);
+		pcmROM = NULL;
+	}
+}
+
+void MidiSynth::Close() {
+	waveOut.Pause();
+	waveOut.Close();
 	synthEvent.Wait();
 	synth->close();
 
 	// Cleanup memory
 	delete synth;
-	delete stream;
+	delete buffer;
+	FreeROMImages();
 
 	synthEvent.Close();
-	return 0;
 }
 
 }

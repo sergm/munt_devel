@@ -42,7 +42,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="..\mt32emu\src"
+				AdditionalIncludeDirectories="..\..\munt\mt32emu\src"
 				PreprocessorDefinitions="WIN32;_DEBUG"
 				RuntimeLibrary="3"
 				UsePrecompiledHeader="2"
@@ -60,7 +60,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="mt32emu.lib SDL_net.lib advapi32.lib user32.lib winmm.lib $(NOINHERIT)"
+				AdditionalDependencies="advapi32.lib user32.lib winmm.lib $(NOINHERIT)"
 				LinkIncremental="2"
 				AdditionalLibraryDirectories="&quot;..\mt32emu\$(ConfigurationName)&quot;;..\SDL\lib"
 				GenerateDebugInformation="true"

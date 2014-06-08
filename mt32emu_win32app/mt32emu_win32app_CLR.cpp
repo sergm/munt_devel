@@ -30,7 +30,7 @@ int main(array<System::String ^> ^args)
 	midiIn.Init(&midiSynth, midiDevID);
 	midiIn.Start();
 
-	ShowWindow(GetConsoleWindow(), SW_HIDE);
+	//ShowWindow(GetConsoleWindow(), SW_HIDE);
 
 	// Create the main window and run it
 	Application::Run(gcnew Form1());

@@ -19,7 +19,7 @@
 namespace mt32emu_win32app_CLR {
 
 	unsigned int midiDevID = 0;
-	MT32Emu::MidiSynth midiSynth;
+	MT32Emu::MidiSynth &midiSynth = MT32Emu::MidiSynth::getInstance();
 	MT32Emu::MidiInWin32 midiIn;
 
 	using namespace System;
@@ -182,6 +182,7 @@ namespace mt32emu_win32app_CLR {
 			// 
 			// bApply
 			// 
+			this->bApply->Enabled = false;
 			this->bApply->Location = System::Drawing::Point(32, 236);
 			this->bApply->Name = L"bApply";
 			this->bApply->Size = System::Drawing::Size(87, 23);
@@ -259,6 +260,8 @@ namespace mt32emu_win32app_CLR {
 			// chbShowConsole
 			// 
 			this->chbShowConsole->AutoSize = true;
+			this->chbShowConsole->Checked = true;
+			this->chbShowConsole->CheckState = System::Windows::Forms::CheckState::Checked;
 			this->chbShowConsole->Location = System::Drawing::Point(37, 206);
 			this->chbShowConsole->Name = L"chbShowConsole";
 			this->chbShowConsole->Size = System::Drawing::Size(93, 17);
@@ -478,7 +481,7 @@ private: System::Void bClose_Click(System::Object^  sender, System::EventArgs^  
 					 this->Close();
 				 }
 private: System::Void bApply_Click(System::Object^  sender, System::EventArgs^  e) {
-					 midiSynth.StoreSettings(
+/*					 midiSynth.StoreSettings(
 						 (int)nudSampleRate->Value,
 						 (int)nudLatency->Value,
 						 chbReverbEnabled->Checked,
@@ -489,7 +492,7 @@ private: System::Void bApply_Click(System::Object^  sender, System::EventArgs^  
 						 (int)nudVolume->Value,
 						 (int)nudReverbGain->Value,
 						 (int)cbDACInputMode->SelectedIndex);
-				 }
+*/				 }
 private: System::Void bResetSynth_Click(System::Object^  sender, System::EventArgs^  e) {
 					 midiSynth.Reset();
 					 if (midiDevID != (int)nudMidiIn->Value) {

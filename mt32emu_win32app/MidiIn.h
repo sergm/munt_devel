@@ -23,7 +23,7 @@ private:
 	Bit8u sysexbuf[4096];
 
 	static void CALLBACK MidiInProc(HMIDIIN hMidiIn, UINT wMsg, DWORD_PTR dwInstance, DWORD_PTR dwParam1, DWORD_PTR dwParam2) {
-		MidiSynth *midiSynth = (MidiSynth *)dwInstance;
+		MidiSynth &midiSynth = MidiSynth::getInstance();
 
 		LPMIDIHDR pMIDIhdr = (LPMIDIHDR)dwParam1;
 		if (wMsg == MIM_LONGDATA) {
@@ -31,7 +31,7 @@ private:
 				// 0 length means returning the buffer to the application when closing
 				return;
 			}
-			midiSynth->PlaySysex((Bit8u*)pMIDIhdr->lpData, pMIDIhdr->dwBytesRecorded);
+			midiSynth.PlaySysex((Bit8u*)pMIDIhdr->lpData, pMIDIhdr->dwBytesRecorded);
 			std::cout << "Play SysEx message " << pMIDIhdr->dwBytesRecorded << " bytes\n";
 
 			//	Add SysEx Buffer for reuse
@@ -42,7 +42,7 @@ private:
 			return;
 		}
 		if (wMsg != MIM_DATA) return;
-		midiSynth->PushMIDI(dwParam1);
+		midiSynth.PlayMIDI(dwParam1);
 	}
 
 public:
