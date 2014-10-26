@@ -16,7 +16,11 @@ int main(int argc, char *argv[]) {
 		Sample outStream[2];
 		Sample *outP = outStream;
 		analog->process(&outP, &inLeft, &silence, &silence, &silence, &silence, &silence, 1);
+#if MT32EMU_USE_FLOAT_SAMPLES
 		printf("%.16e\n", outStream[0]);
+#else
+		printf("%d\n", outStream[0]);
+#endif
 	} while (!std::cin.eof() && (i++ < 65535));
 	return 0;
 }
