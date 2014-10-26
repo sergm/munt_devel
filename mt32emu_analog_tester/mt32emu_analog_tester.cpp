@@ -7,6 +7,7 @@ static const ControlROMFeatureSet CM32L_COMPATIBLE(false, false);
 
 int main(int argc, char *argv[]) {
 	Analog *analog = new Analog(AnalogOutputMode_ACCURATE, &MT32_COMPATIBLE);
+	analog->setSynthOutputGain(1.0f);
 	int i = 0;
 	do {
 		Sample inLeft = 0;
