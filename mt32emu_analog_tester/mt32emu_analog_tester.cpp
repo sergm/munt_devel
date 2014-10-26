@@ -2,8 +2,11 @@
 
 using namespace MT32Emu;
 
+static const ControlROMFeatureSet MT32_COMPATIBLE(true, true);
+static const ControlROMFeatureSet CM32L_COMPATIBLE(false, false);
+
 int main(int argc, char *argv[]) {
-	Analog *analog = Analog::createAnalogModel();
+	Analog *analog = new Analog(AnalogOutputMode_ACCURATE, &MT32_COMPATIBLE);
 	int i = 0;
 	do {
 		Sample inLeft = 0;
