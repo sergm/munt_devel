@@ -8,6 +8,11 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "mt32emu_win32app_9x", "mt32
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "mt32emu", "mt32emu\mt32emu.vcproj", "{AE115D11-24E8-40F3-9E96-211B0373C8F4}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "mt32emu_win32app_CLR", "mt32emu_win32app_CLR_9x\mt32emu_win32app_CLR_9x.vcproj", "{6826C112-149B-4091-846D-6391D6A2DEA1}"
+	ProjectSection(ProjectDependencies) = postProject
+		{AE115D11-24E8-40F3-9E96-211B0373C8F4} = {AE115D11-24E8-40F3-9E96-211B0373C8F4}
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Release|Win32 = Release|Win32
@@ -17,6 +22,8 @@ Global
 		{A573E29B-DDE8-42C7-AE09-556286A6D60B}.Release|Win32.Build.0 = Release|Win32
 		{AE115D11-24E8-40F3-9E96-211B0373C8F4}.Release|Win32.ActiveCfg = Release|Win32
 		{AE115D11-24E8-40F3-9E96-211B0373C8F4}.Release|Win32.Build.0 = Release|Win32
+		{6826C112-149B-4091-846D-6391D6A2DEA1}.Release|Win32.ActiveCfg = Release|Win32
+		{6826C112-149B-4091-846D-6391D6A2DEA1}.Release|Win32.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

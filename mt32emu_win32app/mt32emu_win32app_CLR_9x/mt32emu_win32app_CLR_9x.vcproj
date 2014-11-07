@@ -1,12 +1,11 @@
 <?xml version="1.0" encoding="windows-1251"?>
 <VisualStudioProject
 	ProjectType="Visual C++"
-	Version="9,00"
-	Name="mt32emu_win32app_CLR"
-	ProjectGUID="{16E05969-A290-467A-B891-6647A748AF5F}"
+	Version="8,00"
+	Name="mt32emu_win32app_CLR_9x"
+	ProjectGUID="{6826C112-149B-4091-846D-6391D6A2DEA1}"
 	RootNamespace="mt32emu_win32app_CLR"
 	Keyword="ManagedCProj"
-	TargetFrameworkVersion="196613"
 	>
 	<Platforms>
 		<Platform
@@ -16,81 +15,6 @@
 	<ToolFiles>
 	</ToolFiles>
 	<Configurations>
-		<Configuration
-			Name="Debug|Win32"
-			OutputDirectory="$(SolutionDir)$(ConfigurationName)"
-			IntermediateDirectory="$(ConfigurationName)"
-			ConfigurationType="1"
-			CharacterSet="1"
-			ManagedExtensions="1"
-			>
-			<Tool
-				Name="VCPreBuildEventTool"
-			/>
-			<Tool
-				Name="VCCustomBuildTool"
-			/>
-			<Tool
-				Name="VCXMLDataGeneratorTool"
-			/>
-			<Tool
-				Name="VCWebServiceProxyGeneratorTool"
-			/>
-			<Tool
-				Name="VCMIDLTool"
-			/>
-			<Tool
-				Name="VCCLCompilerTool"
-				Optimization="0"
-				AdditionalIncludeDirectories="..\..\munt\mt32emu\src;..\..\munt\mt32emu_win32drv\src"
-				PreprocessorDefinitions="WIN32;_DEBUG"
-				RuntimeLibrary="3"
-				UsePrecompiledHeader="2"
-				WarningLevel="3"
-				DebugInformationFormat="3"
-			/>
-			<Tool
-				Name="VCManagedResourceCompilerTool"
-			/>
-			<Tool
-				Name="VCResourceCompilerTool"
-			/>
-			<Tool
-				Name="VCPreLinkEventTool"
-			/>
-			<Tool
-				Name="VCLinkerTool"
-				AdditionalDependencies="advapi32.lib user32.lib winmm.lib $(NOINHERIT)"
-				LinkIncremental="2"
-				AdditionalLibraryDirectories="&quot;..\mt32emu\$(ConfigurationName)&quot;"
-				GenerateDebugInformation="true"
-				AssemblyDebug="1"
-				SubSystem="1"
-				EntryPointSymbol=""
-				TargetMachine="1"
-			/>
-			<Tool
-				Name="VCALinkTool"
-			/>
-			<Tool
-				Name="VCManifestTool"
-			/>
-			<Tool
-				Name="VCXDCMakeTool"
-			/>
-			<Tool
-				Name="VCBscMakeTool"
-			/>
-			<Tool
-				Name="VCFxCopTool"
-			/>
-			<Tool
-				Name="VCAppVerifierTool"
-			/>
-			<Tool
-				Name="VCPostBuildEventTool"
-			/>
-		</Configuration>
 		<Configuration
 			Name="Release|Win32"
 			OutputDirectory="$(SolutionDir)$(ConfigurationName)"
@@ -117,7 +41,9 @@
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
-				AdditionalIncludeDirectories="..\..\munt\mt32emu\src;..\..\munt\mt32emu_win32drv\src"
+				Optimization="3"
+				FavorSizeOrSpeed="1"
+				AdditionalIncludeDirectories="..\..\..\munt\mt32emu\src;..\..\..\munt\mt32emu_win32drv\src"
 				PreprocessorDefinitions="WIN32;NDEBUG"
 				RuntimeLibrary="2"
 				UsePrecompiledHeader="2"
@@ -135,12 +61,11 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="mt32emu.lib advapi32.lib user32.lib winmm.lib $(NOINHERIT)"
+				AdditionalDependencies="advapi32.lib user32.lib winmm.lib"
 				LinkIncremental="1"
-				AdditionalLibraryDirectories="&quot;..\mt32emu\$(ConfigurationName)&quot;"
 				GenerateDebugInformation="true"
 				SubSystem="1"
-				EntryPointSymbol=""
+				EntryPointSymbol="main"
 				TargetMachine="1"
 			/>
 			<Tool
@@ -162,6 +87,9 @@
 				Name="VCAppVerifierTool"
 			/>
 			<Tool
+				Name="VCWebDeploymentTool"
+			/>
+			<Tool
 				Name="VCPostBuildEventTool"
 			/>
 		</Configuration>
@@ -170,27 +98,22 @@
 		<AssemblyReference
 			RelativePath="System.dll"
 			AssemblyName="System, Version=2.0.0.0, PublicKeyToken=b77a5c561934e089, processorArchitecture=MSIL"
-			MinFrameworkVersion="131072"
 		/>
 		<AssemblyReference
 			RelativePath="System.Data.dll"
 			AssemblyName="System.Data, Version=2.0.0.0, PublicKeyToken=b77a5c561934e089, processorArchitecture=x86"
-			MinFrameworkVersion="131072"
 		/>
 		<AssemblyReference
 			RelativePath="System.Drawing.dll"
 			AssemblyName="System.Drawing, Version=2.0.0.0, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL"
-			MinFrameworkVersion="131072"
 		/>
 		<AssemblyReference
 			RelativePath="System.Windows.Forms.dll"
 			AssemblyName="System.Windows.Forms, Version=2.0.0.0, PublicKeyToken=b77a5c561934e089, processorArchitecture=MSIL"
-			MinFrameworkVersion="131072"
 		/>
 		<AssemblyReference
 			RelativePath="System.XML.dll"
 			AssemblyName="System.Xml, Version=2.0.0.0, PublicKeyToken=b77a5c561934e089, processorArchitecture=MSIL"
-			MinFrameworkVersion="131072"
 		/>
 	</References>
 	<Files>
@@ -204,24 +127,16 @@
 				>
 			</File>
 			<File
-				RelativePath="..\..\munt\mt32emu_win32drv\src\MidiSynth.cpp"
+				RelativePath="..\..\..\munt\mt32emu_win32drv\src\MidiSynth.cpp"
 				>
 			</File>
 			<File
-				RelativePath="..\..\munt_devel\mt32emu_win32app\mt32emu_win32app_CLR.cpp"
+				RelativePath="..\..\..\munt_devel\mt32emu_win32app\mt32emu_win32app_CLR.cpp"
 				>
 			</File>
 			<File
-				RelativePath="..\..\munt_devel\mt32emu_win32app\stdafx.cpp"
+				RelativePath="..\..\..\munt_devel\mt32emu_win32app\stdafx.cpp"
 				>
-				<FileConfiguration
-					Name="Debug|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						UsePrecompiledHeader="1"
-					/>
-				</FileConfiguration>
 				<FileConfiguration
 					Name="Release|Win32"
 					>
@@ -248,7 +163,11 @@
 				</File>
 			</File>
 			<File
-				RelativePath="..\..\munt\mt32emu_win32drv\src\MidiSynth.h"
+				RelativePath="..\..\..\munt_devel\mt32emu_win32app\MidiIn.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\..\munt\mt32emu_win32drv\src\MidiSynth.h"
 				>
 			</File>
 			<File
@@ -256,7 +175,7 @@
 				>
 			</File>
 			<File
-				RelativePath="..\..\munt_devel\mt32emu_win32app\stdafx.h"
+				RelativePath="..\..\..\munt_devel\mt32emu_win32app\stdafx.h"
 				>
 			</File>
 		</Filter>
@@ -275,7 +194,7 @@
 			</File>
 		</Filter>
 		<File
-			RelativePath="..\..\munt_devel\mt32emu_win32app\ReadMe.txt"
+			RelativePath="..\..\..\munt_devel\mt32emu_win32app\ReadMe.txt"
 			>
 		</File>
 	</Files>
