@@ -139,7 +139,7 @@
 			</File>
 		</Filter>
 		<File
-			RelativePath=".\ReadMe.txt"
+			RelativePath="..\..\munt_devel\mt32emu_win32app\ReadMe.txt"
 			>
 		</File>
 	</Files>
