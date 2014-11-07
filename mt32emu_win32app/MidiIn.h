@@ -32,7 +32,7 @@ private:
 				return;
 			}
 			midiSynth.PlaySysex((Bit8u*)pMIDIhdr->lpData, pMIDIhdr->dwBytesRecorded);
-			std::cout << "Play SysEx message " << pMIDIhdr->dwBytesRecorded << " bytes\n";
+			//std::cout << "Play SysEx message " << pMIDIhdr->dwBytesRecorded << " bytes\n";
 
 			//	Add SysEx Buffer for reuse
 			if (midiInAddBuffer(hMidiIn, pMIDIhdr, sizeof(MIDIHDR)) != MMSYSERR_NOERROR) {
