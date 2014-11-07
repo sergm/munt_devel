@@ -208,11 +208,11 @@
 				>
 			</File>
 			<File
-				RelativePath=".\mt32emu_win32app_CLR.cpp"
+				RelativePath="..\..\munt_devel\mt32emu_win32app\mt32emu_win32app_CLR.cpp"
 				>
 			</File>
 			<File
-				RelativePath=".\stdafx.cpp"
+				RelativePath="..\..\munt_devel\mt32emu_win32app\stdafx.cpp"
 				>
 				<FileConfiguration
 					Name="Debug|Win32"
@@ -256,7 +256,7 @@
 				>
 			</File>
 			<File
-				RelativePath=".\stdafx.h"
+				RelativePath="..\..\munt_devel\mt32emu_win32app\stdafx.h"
 				>
 			</File>
 		</Filter>
@@ -275,7 +275,7 @@
 			</File>
 		</Filter>
 		<File
-			RelativePath=".\ReadMe.txt"
+			RelativePath="..\..\munt_devel\mt32emu_win32app\ReadMe.txt"
 			>
 		</File>
 	</Files>
