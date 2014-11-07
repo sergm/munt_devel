@@ -3,14 +3,14 @@
 // are changed infrequently
 #pragma once
 
-// TODO: reference additional headers your program requires here
-#include <windows.h>
-#include <iostream>
-#include <process.h>
-#include "mt32emu.h"
-
-#if MT32EMU_USE_EXTINT == 1
-#include "externalInterface.h"
+// MinGW doesn't define UNICODE by default
+#ifndef UNICODE
+#define UNICODE
 #endif
+
+#include <windows.h>
+#include <process.h>
+#include <iostream>
+#include <mt32emu.h>
 
 #include "MidiSynth.h"

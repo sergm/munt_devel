@@ -1,7 +1,12 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 10.00
 # Visual C++ Express 2008
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "mt32emu_win32app", "mt32emu_win32app_CLR.vcproj", "{16E05969-A290-467A-B891-6647A748AF5F}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "mt32emu_win32app", "mt32emu_win32app.vcproj", "{6BD8C7E3-7B94-4BC3-AD79-5E529B4A6A71}"
+	ProjectSection(ProjectDependencies) = postProject
+		{063A149D-E48C-499B-B13F-7A70C140A662} = {063A149D-E48C-499B-B13F-7A70C140A662}
+	EndProjectSection
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "mt32emu_win32app_CLR", "mt32emu_win32app_CLR.vcproj", "{16E05969-A290-467A-B891-6647A748AF5F}"
 	ProjectSection(ProjectDependencies) = postProject
 		{063A149D-E48C-499B-B13F-7A70C140A662} = {063A149D-E48C-499B-B13F-7A70C140A662}
 	EndProjectSection
@@ -14,6 +19,10 @@ Global
 		Release|Win32 = Release|Win32
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{6BD8C7E3-7B94-4BC3-AD79-5E529B4A6A71}.Debug|Win32.ActiveCfg = Debug|Win32
+		{6BD8C7E3-7B94-4BC3-AD79-5E529B4A6A71}.Debug|Win32.Build.0 = Debug|Win32
+		{6BD8C7E3-7B94-4BC3-AD79-5E529B4A6A71}.Release|Win32.ActiveCfg = Release|Win32
+		{6BD8C7E3-7B94-4BC3-AD79-5E529B4A6A71}.Release|Win32.Build.0 = Release|Win32
 		{16E05969-A290-467A-B891-6647A748AF5F}.Debug|Win32.ActiveCfg = Debug|Win32
 		{16E05969-A290-467A-B891-6647A748AF5F}.Debug|Win32.Build.0 = Debug|Win32
 		{16E05969-A290-467A-B891-6647A748AF5F}.Release|Win32.ActiveCfg = Release|Win32
