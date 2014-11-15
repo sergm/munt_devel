@@ -2,8 +2,8 @@
 
 using namespace MT32Emu;
 
-Bit8u stream[] = {0};
-Bit32u len = sizeof(stream);
+Bit8u stream1[] = {0x00};
+Bit8u stream2[] = {0x00};
 
 void fail(char msg[] = NULL) {
 	if (msg != NULL) std::cout << msg << std::endl;
@@ -11,7 +11,7 @@ void fail(char msg[] = NULL) {
 	exit(1);
 }
 
-int main(int argc, char *argv[]) {
+int main() {
 	Synth &synth = *new Synth();
 	FileStream controlROMFile;
 	FileStream pcmROMFile;
@@ -23,7 +23,11 @@ int main(int argc, char *argv[]) {
 	const ROMImage *pcmROMImage = ROMImage::makeROMImage(&pcmROMFile);
 	ok = synth.open(*controlROMImage, *pcmROMImage, AnalogOutputMode_ACCURATE);
 	if (!ok) fail("Failed to open synth");
-	Bit32u parsedLength = synth.playRawMidiStream(stream, len);
+	Bit32u len = sizeof(stream1);
+	Bit32u parsedLength = synth.playRawMidiStream(stream1, len);
+	std::cout << "Sent=" << len << ", parsed=" << parsedLength << std::endl;
+	len = sizeof(stream2);
+	parsedLength = synth.playRawMidiStream(stream2, len);
 	std::cout << "Sent=" << len << ", parsed=" << parsedLength << std::endl;
 	_getch();
 	return 0;
