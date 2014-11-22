@@ -21,9 +21,11 @@ private:
 	HMIDIIN hMidiIn;
 	MIDIHDR MidiInHdr;
 	Bit8u sysexbuf[4096];
+	MidiParser *midiParser;
 
 	static void CALLBACK MidiInProc(HMIDIIN hMidiIn, UINT wMsg, DWORD_PTR dwInstance, DWORD_PTR dwParam1, DWORD_PTR dwParam2) {
 		MidiSynth &midiSynth = MidiSynth::getInstance();
+		MidiParser &midiParser = *(MidiParser *)dwInstance;
 
 		LPMIDIHDR pMIDIhdr = (LPMIDIHDR)dwParam1;
 		if (wMsg == MIM_LONGDATA) {
@@ -31,8 +33,10 @@ private:
 				// 0 length means returning the buffer to the application when closing
 				return;
 			}
-			midiSynth.PlaySysex((Bit8u*)pMIDIhdr->lpData, pMIDIhdr->dwBytesRecorded);
-			//std::cout << "Play SysEx message " << pMIDIhdr->dwBytesRecorded << " bytes\n";
+			//std::cout << "Play LONGDATA block of " << pMIDIhdr->dwBytesRecorded << " bytes:\n";
+			//for (unsigned int i = 0; i < pMIDIhdr->dwBytesRecorded; i++) printf("%02x ", *((Bit8u*)pMIDIhdr->lpData + i));
+			//std::cout << std::endl;
+			midiSynth.PlayRawStream((Bit8u*)pMIDIhdr->lpData, pMIDIhdr->dwBytesRecorded, midiParser);
 
 			//	Add SysEx Buffer for reuse
 			if (midiInAddBuffer(hMidiIn, pMIDIhdr, sizeof(MIDIHDR)) != MMSYSERR_NOERROR) {
@@ -49,8 +53,11 @@ public:
 	int Init(MidiSynth *midiSynth, unsigned int midiDevID) {
 		int wResult;
 
+		// Create MidiParser prior to getting any MIDI messages
+		midiParser = midiSynth->createMidiParser();
+
 		//	Init midiIn port
-		wResult = midiInOpen(&hMidiIn, midiDevID, (DWORD_PTR)MidiInProc, (DWORD_PTR)midiSynth, CALLBACK_FUNCTION);
+		wResult = midiInOpen(&hMidiIn, midiDevID, (DWORD_PTR)MidiInProc, (DWORD_PTR)midiParser, CALLBACK_FUNCTION);
 		if (wResult != MMSYSERR_NOERROR) {
 			MessageBox(NULL, L"Failed to open midi input device", NULL, MB_OK | MB_ICONEXCLAMATION);
 			return 5;
@@ -96,6 +103,7 @@ public:
 			return 8;
 		}
 
+		MidiSynth::getInstance().removeMidiParser(midiParser);
 		return 0;
 	}
 
