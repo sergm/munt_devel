@@ -23,11 +23,12 @@ int main() {
 	const ROMImage *pcmROMImage = ROMImage::makeROMImage(&pcmROMFile);
 	ok = synth.open(*controlROMImage, *pcmROMImage, AnalogOutputMode_ACCURATE);
 	if (!ok) fail("Failed to open synth");
+	MidiParser parser(synth);
 	Bit32u len = sizeof(stream1);
-	Bit32u parsedLength = synth.playRawMidiStream(stream1, len);
+	Bit32u parsedLength = parser.playRawMidiStream(stream1, len);
 	std::cout << "Sent=" << len << ", parsed=" << parsedLength << std::endl;
 	len = sizeof(stream2);
-	parsedLength = synth.playRawMidiStream(stream2, len);
+	parsedLength = parser.playRawMidiStream(stream2, len);
 	std::cout << "Sent=" << len << ", parsed=" << parsedLength << std::endl;
 	_getch();
 	return 0;
