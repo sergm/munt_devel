@@ -16,17 +16,34 @@
 
 namespace MT32Emu {
 
+static class : public MidiStreamParser {
+protected:
+	virtual void handleShortMessage(const Bit32u message) {
+		MidiSynth::getInstance().PlayMIDI(message);
+	}
+
+	virtual void handleSysex(const Bit8u stream[], const Bit32u length) {
+		MidiSynth::getInstance().PlaySysex(stream, length);
+	}
+
+	virtual void handleSytemRealtimeMessage(const Bit8u realtime) {
+		// Unsupported by now
+	}
+
+	virtual void printDebug(const char *debugMessage) {
+#ifdef ENABLE_DEBUG_OUTPUT
+		std::cout << debugMessage << std::endl;
+#endif
+	}
+} midiStreamParser;
+
 class MidiInWin32 {
 private:
 	HMIDIIN hMidiIn;
 	MIDIHDR MidiInHdr;
 	Bit8u sysexbuf[4096];
-	MidiParser *midiParser;
 
 	static void CALLBACK MidiInProc(HMIDIIN hMidiIn, UINT wMsg, DWORD_PTR dwInstance, DWORD_PTR dwParam1, DWORD_PTR dwParam2) {
-		MidiSynth &midiSynth = MidiSynth::getInstance();
-		MidiParser &midiParser = *(MidiParser *)dwInstance;
-
 		LPMIDIHDR pMIDIhdr = (LPMIDIHDR)dwParam1;
 		if (wMsg == MIM_LONGDATA) {
 			if (pMIDIhdr->dwBytesRecorded == 0) {
@@ -36,7 +53,7 @@ private:
 			//std::cout << "Play LONGDATA block of " << pMIDIhdr->dwBytesRecorded << " bytes:\n";
 			//for (unsigned int i = 0; i < pMIDIhdr->dwBytesRecorded; i++) printf("%02x ", *((Bit8u*)pMIDIhdr->lpData + i));
 			//std::cout << std::endl;
-			midiSynth.PlayRawStream((Bit8u*)pMIDIhdr->lpData, pMIDIhdr->dwBytesRecorded, midiParser);
+			midiStreamParser.parseStream((Bit8u*)pMIDIhdr->lpData, pMIDIhdr->dwBytesRecorded);
 
 			//	Add SysEx Buffer for reuse
 			if (midiInAddBuffer(hMidiIn, pMIDIhdr, sizeof(MIDIHDR)) != MMSYSERR_NOERROR) {
@@ -46,18 +63,15 @@ private:
 			return;
 		}
 		if (wMsg != MIM_DATA) return;
-		midiSynth.PlayMIDI(dwParam1);
+		midiStreamParser.processShortMessage(dwParam1);
 	}
 
 public:
 	int Init(MidiSynth *midiSynth, unsigned int midiDevID) {
 		int wResult;
 
-		// Create MidiParser prior to getting any MIDI messages
-		midiParser = midiSynth->createMidiParser();
-
 		//	Init midiIn port
-		wResult = midiInOpen(&hMidiIn, midiDevID, (DWORD_PTR)MidiInProc, (DWORD_PTR)midiParser, CALLBACK_FUNCTION);
+		wResult = midiInOpen(&hMidiIn, midiDevID, (DWORD_PTR)MidiInProc, (DWORD_PTR)this, CALLBACK_FUNCTION);
 		if (wResult != MMSYSERR_NOERROR) {
 			MessageBox(NULL, L"Failed to open midi input device", NULL, MB_OK | MB_ICONEXCLAMATION);
 			return 5;
@@ -103,7 +117,6 @@ public:
 			return 8;
 		}
 
-		MidiSynth::getInstance().removeMidiParser(midiParser);
 		return 0;
 	}
 
