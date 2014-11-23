@@ -3,7 +3,7 @@
 ;--------------------------------
 ; You must define these values
 
-  !define VERSION "1.3.0"
+  !define VERSION "1.4.0"
   !define PATCH  "0"
   !define INST_DIR "munt-${VERSION}-win32"
 
