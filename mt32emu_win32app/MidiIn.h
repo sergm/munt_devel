@@ -62,8 +62,7 @@ private:
 			}
 			return;
 		}
-		if (wMsg != MIM_DATA) return;
-		midiStreamParser.processShortMessage(dwParam1);
+		if (wMsg == MIM_DATA) MidiSynth::getInstance().PlayMIDI(dwParam1);
 	}
 
 public:
