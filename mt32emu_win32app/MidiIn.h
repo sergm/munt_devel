@@ -16,7 +16,7 @@
 
 namespace MT32Emu {
 
-static class : public MidiStreamParser {
+static class MidiStreamParserImpl : public MidiStreamParser {
 protected:
 	virtual void handleShortMessage(const Bit32u message) {
 		MidiSynth::getInstance().PlayMIDI(message);
