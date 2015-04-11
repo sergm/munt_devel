@@ -1,6 +1,6 @@
 #include "stdafx.h"
 
-#include "LinearResampler.h"
+#include "InternalResampler.h"
 
 using namespace MT32Emu;
 
@@ -31,7 +31,7 @@ int main(int argc, char *argv[]) {
 		return 1;
 	}
 	Synth synth;
-	LinearResampler src(&synth, sampleRate);
+	InternalResampler src(&synth, sampleRate * 1 / 1, SampleRateConverter::SRC_GOOD);
 	Sample out[2 * MAX_SAMPLES_PER_RUN];
 	LARGE_INTEGER freq, startTime, endTime;
 	QueryPerformanceFrequency(&freq);
