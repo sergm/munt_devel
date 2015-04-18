@@ -40,6 +40,7 @@ int main(int argc, char *argv[]) {
 	QueryPerformanceCounter(&endTime);
 	double time = double(endTime.QuadPart - startTime.QuadPart) / freq.QuadPart;
 	std::cerr << "Elapsed time: " << time * 1e3 << " msec" << std::endl;
+	std::cout.precision(17);
 	for (int i = 0; i < 2 * MAX_SAMPLES_PER_RUN; i += 2) {
 		std::cout << out[i] << "\t" << out[i + 1] << std::endl;
 	}
