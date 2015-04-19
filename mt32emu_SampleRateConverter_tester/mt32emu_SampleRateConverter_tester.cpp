@@ -31,17 +31,20 @@ int main(int argc, char *argv[]) {
 		return 1;
 	}
 	Synth synth;
-	SampleRateConverter &src = *SampleRateConverter::createSampleRateConverter(&synth, sampleRate, SampleRateConverter::SRC_GOOD);
+	SampleRateConverter &src = *SampleRateConverter::createSampleRateConverter(&synth, sampleRate, SampleRateConverter::SRC_FASTEST);
 	Sample out[2 * MAX_SAMPLES_PER_RUN];
 	LARGE_INTEGER freq, startTime, endTime;
 	QueryPerformanceFrequency(&freq);
 	QueryPerformanceCounter(&startTime);
-	src.getOutputSamples(out, MAX_SAMPLES_PER_RUN);
+	int framesTotal = 30;
+	int framesPerRun = 1;
+	for (int i = 0; i < framesTotal; i += framesPerRun)
+		src.getOutputSamples(out + 2 * i, framesPerRun);
 	QueryPerformanceCounter(&endTime);
 	double time = double(endTime.QuadPart - startTime.QuadPart) / freq.QuadPart;
 	std::cerr << "Elapsed time: " << time * 1e3 << " msec" << std::endl;
 	std::cout.precision(17);
-	for (int i = 0; i < 2 * MAX_SAMPLES_PER_RUN; i += 2) {
+	for (int i = 0; i < 2 * framesTotal; i += 2) {
 		std::cout << out[i] << "\t" << out[i + 1] << std::endl;
 	}
 	return 0;
