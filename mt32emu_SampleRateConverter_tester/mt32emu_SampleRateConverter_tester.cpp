@@ -8,7 +8,14 @@ Bit32u Synth::getStereoOutputSampleRate() {
 	return SAMPLE_RATE;
 }
 
-void Synth::render(Sample *inBuffer, Bit32u inLength) {
+Bit32u Synth::getStereoOutputSampleRate(AnalogOutputMode mode) {
+	static const unsigned int SAMPLE_RATES[] = { SAMPLE_RATE, SAMPLE_RATE, SAMPLE_RATE * 3 / 2, SAMPLE_RATE * 3 };
+
+	return SAMPLE_RATES[mode];
+}
+
+template <class S>
+void render(S *inBuffer, Bit32u inLength) {
 	while (inLength-- > 0) {
 		if (std::cin.eof()) {
 			*inBuffer++ = 0;
@@ -18,6 +25,14 @@ void Synth::render(Sample *inBuffer, Bit32u inLength) {
 			std::cin >> *inBuffer++;
 		}
 	}
+}
+
+void Synth::render(Bit16s *inBuffer, Bit32u inLength) {
+	::render(inBuffer, inLength);
+}
+
+void Synth::render(float *inBuffer, Bit32u inLength) {
+	::render(inBuffer, inLength);
 }
 
 int main(int argc, char *argv[]) {
@@ -32,7 +47,7 @@ int main(int argc, char *argv[]) {
 	}
 	Synth synth;
 	SampleRateConverter &src = *SampleRateConverter::createSampleRateConverter(&synth, sampleRate, SampleRateConverter::SRC_FASTEST);
-	Sample out[2 * MAX_SAMPLES_PER_RUN];
+	Bit16s out[2 * MAX_SAMPLES_PER_RUN];
 	LARGE_INTEGER freq, startTime, endTime;
 	QueryPerformanceFrequency(&freq);
 	QueryPerformanceCounter(&startTime);
