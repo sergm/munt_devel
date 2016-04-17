@@ -8,13 +8,8 @@ using namespace mt32emu_win32app_CLR;
 
 [STAThreadAttribute]
 
-#if MT32EMU_USE_EXTINT == 1
 //int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd)
-int wmain()
-#else
-//int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd)
-int main(array<System::String ^> ^args)
-#endif
+int main()
 {
 	// Enabling Windows XP visual effects before any controls are created
 	Application::EnableVisualStyles();
