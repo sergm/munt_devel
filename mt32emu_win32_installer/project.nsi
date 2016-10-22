@@ -3,7 +3,7 @@
 ;--------------------------------
 ; You must define these values
 
-  !define VERSION "1.5.0"
+  !define VERSION "2.0.0"
   !define PATCH  "0"
   !define INST_DIR "munt-${VERSION}-win32"
 
@@ -546,7 +546,7 @@ FunctionEnd
 ;Pages
   !insertmacro MUI_PAGE_WELCOME
 
-  !insertmacro MUI_PAGE_LICENSE "C:/Qt/munt/mt32emu_qt/COPYING.txt"
+  !insertmacro MUI_PAGE_LICENSE "munt-2.0.0-win32/docs/mt32emu_qt/COPYING.txt"
   Page custom InstallOptionsPage
   !insertmacro MUI_PAGE_DIRECTORY
 
@@ -644,7 +644,7 @@ Section "-Core installation"
   WriteRegStr SHCTX "Software\muntemu.org\munt ${VERSION}" "" $INSTDIR
 
   ;Register MIDI driver
-  Exec '"$INSTDIR\bin\mt32emu_win32drv\drvsetup.exe" install'
+  Exec '"$INSTDIR\mt32emu_win32drv\drvsetup.exe" install'
 
   ;Create uninstaller
   WriteUninstaller "$INSTDIR\Uninstall.exe"
@@ -693,7 +693,7 @@ Section "-Core installation"
 
   ;Create shortcuts
   CreateDirectory "$SMPROGRAMS\$STARTMENU_FOLDER"
-  CreateShortCut "$SMPROGRAMS\$STARTMENU_FOLDER\Munt MT-32 Sound Module Emulator.lnk" "$INSTDIR\bin\mt32emu-qt.exe"
+  CreateShortCut "$SMPROGRAMS\$STARTMENU_FOLDER\Munt MT-32 Sound Module Emulator.lnk" "$INSTDIR\mt32emu-qt.exe"
 
 
   CreateShortCut "$SMPROGRAMS\$STARTMENU_FOLDER\Uninstall.lnk" "$INSTDIR\Uninstall.exe"
@@ -727,7 +727,7 @@ Section "-Core installation"
 SectionEnd
 
 Section "-Add to path"
-  Push $INSTDIR\bin
+  Push $INSTDIR
   StrCmp "" "ON" 0 doNotAddToPath
   StrCmp $DO_NOT_ADD_TO_PATH "1" doNotAddToPath 0
     Call AddToPath
@@ -824,23 +824,17 @@ Section "Uninstall"
 
 
   ;Unregister MIDI driver
-  ExecWait '"$INSTDIR\bin\mt32emu_win32drv\drvsetup.exe" uninstall'
+  ExecWait '"$INSTDIR\mt32emu_win32drv\drvsetup.exe" uninstall'
 
   ;Remove files we installed.
   ;Keep the list of directories here in sync with the File commands above.
-  Delete "$INSTDIR\bin\intl.dll"
-  Delete "$INSTDIR\bin\libglib-2.0-0.dll"
-  Delete "$INSTDIR\bin\libsoxr.dll"
-  Delete "$INSTDIR\bin\portaudio_x86.dll"
-  Delete "$INSTDIR\bin\QtCore4.dll"
-  Delete "$INSTDIR\bin\QtGui4.dll"
-  Delete "$INSTDIR\bin\QtMultimedia4.dll"
-  Delete "$INSTDIR\bin\mt32emu-qt.exe"
-  Delete "$INSTDIR\bin\mt32emu-smf2wav.exe"
-  Delete "$INSTDIR\bin\imageformats\qgif4.dll"
-  Delete "$INSTDIR\bin\mt32emu_win32drv\drvsetup.exe"
-  Delete "$INSTDIR\bin\mt32emu_win32drv\mt32emu.dll"
-  Delete "$INSTDIR\bin\mt32emu_win32drv\mt32emu.inf"
+  Delete "$INSTDIR\intl.dll"
+  Delete "$INSTDIR\libglib-2.0-0.dll"
+  Delete "$INSTDIR\mt32emu-qt.exe"
+  Delete "$INSTDIR\mt32emu-smf2wav.exe"
+  Delete "$INSTDIR\mt32emu_win32drv\drvsetup.exe"
+  Delete "$INSTDIR\mt32emu_win32drv\mt32emu.dll"
+  Delete "$INSTDIR\mt32emu_win32drv\mt32emu.inf"
   Delete "$INSTDIR\docs\mt32emu\AUTHORS.txt"
   Delete "$INSTDIR\docs\mt32emu\COPYING.LESSER.txt"
   Delete "$INSTDIR\docs\mt32emu\COPYING.txt"
@@ -860,9 +854,7 @@ Section "Uninstall"
   Delete "$INSTDIR\docs\mt32emu_win32drv\NEWS.txt"
   Delete "$INSTDIR\docs\mt32emu_win32drv\README.txt"
 
-  RMDir "$INSTDIR\bin\imageformats"
-  RMDir "$INSTDIR\bin\mt32emu_win32drv"
-  RMDir "$INSTDIR\bin"
+  RMDir "$INSTDIR\mt32emu_win32drv"
   RMDir "$INSTDIR\docs\mt32emu"
   RMDir "$INSTDIR\docs\mt32emu_qt"
   RMDir "$INSTDIR\docs\mt32emu_smf2wav"
@@ -929,7 +921,7 @@ Section "Uninstall"
 
   DeleteRegKey /ifempty SHCTX "Software\muntemu.org\munt ${VERSION}"
 
-  Push $INSTDIR\bin
+  Push $INSTDIR
   StrCmp $DO_NOT_ADD_TO_PATH_ "1" doNotRemoveFromPath 0
     Call un.RemoveFromPath
   doNotRemoveFromPath:
