@@ -3,8 +3,6 @@
 // are changed infrequently
 #pragma once
 
-// TODO: reference additional headers your program requires here
-#include <QtCore>
 #include <windows.h>
 #include <iostream>
-#include <mt32emu/mt32emu.h>
+#include <mt32emu.h>

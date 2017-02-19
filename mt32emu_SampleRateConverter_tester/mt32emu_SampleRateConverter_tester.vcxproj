@@ -1,5 +1,5 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<Project DefaultTargets="Build" ToolsVersion="12.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<Project DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
       <Configuration>Debug</Configuration>
@@ -18,13 +18,13 @@
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
-    <PlatformToolset>v120</PlatformToolset>
+    <PlatformToolset>v140</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
     <WholeProgramOptimization>true</WholeProgramOptimization>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
-    <PlatformToolset>v120</PlatformToolset>
+    <PlatformToolset>v140</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
@@ -53,7 +53,7 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>..\..\munt_devel\mt32emu_SampleRateConverter_tester;..\..\munt\mt32emu_qt\src\resample;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\..\conf;..\..\munt\mt32emu\src;..\..\munt\mt32emu\src\srchelper;..\..\munt\mt32emu\src\srchelper\srctools\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <MinimalRebuild>true</MinimalRebuild>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
@@ -67,6 +67,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <SubSystem>Console</SubSystem>
       <TargetMachine>MachineX86</TargetMachine>
+      <ImageHasSafeExceptionHandlers />
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -90,8 +91,6 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="..\..\munt\mt32emu_qt\src\resample\LinearResampler.cpp" />
-    <ClCompile Include="..\..\munt\mt32emu_qt\src\resample\SampleRateConverter.cpp" />
     <ClCompile Include="..\..\munt_devel\mt32emu_SampleRateConverter_tester\mt32emu_SampleRateConverter_tester.cpp" />
     <ClCompile Include="..\..\munt_devel\mt32emu_SampleRateConverter_tester\stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
@@ -99,10 +98,12 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\munt\mt32emu_qt\src\resample\LinearResampler.h" />
-    <ClInclude Include="..\..\munt\mt32emu_qt\src\resample\SampleRateConverter.h" />
-    <ClInclude Include="..\..\munt_devel\mt32emu_SampleRateConverter_tester\mt32emu\mt32emu.h" />
     <ClInclude Include="..\..\munt_devel\mt32emu_SampleRateConverter_tester\stdafx.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\lib_vs14\mt32emu_msvc.vcxproj">
+      <Project>{063a149d-e48c-499b-b13f-7a70c140a662}</Project>
+    </ProjectReference>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

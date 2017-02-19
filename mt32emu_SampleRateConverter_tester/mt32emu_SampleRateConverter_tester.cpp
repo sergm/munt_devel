@@ -1,65 +1,112 @@
 #include "stdafx.h"
 
-#include "SampleRateConverter.h"
+#include <ResamplerModel.h>
+#include <SincResampler.h>
+#include <IIR2xResampler.h>
 
 using namespace MT32Emu;
+using namespace SRCTools;
 
-Bit32u Synth::getStereoOutputSampleRate() {
-	return SAMPLE_RATE;
-}
+static const unsigned int CHANNEL_COUNT = 2;
 
-Bit32u Synth::getStereoOutputSampleRate(AnalogOutputMode mode) {
-	static const unsigned int SAMPLE_RATES[] = { SAMPLE_RATE, SAMPLE_RATE, SAMPLE_RATE * 3 / 2, SAMPLE_RATE * 3 };
+class ArrayFloatSampleProvider : public FloatSampleProvider {
+	FloatSample *inp;
+	unsigned int inLength;
 
-	return SAMPLE_RATES[mode];
-}
+public:
+	ArrayFloatSampleProvider(FloatSample inBuffer[], unsigned int inBufferLength) : inp(inBuffer), inLength(inBufferLength)
+	{}
 
-template <class S>
-void render(S *inBuffer, Bit32u inLength) {
-	while (inLength-- > 0) {
-		if (std::cin.eof()) {
-			*inBuffer++ = 0;
-			*inBuffer++ = 0;
-		} else {
-			std::cin >> *inBuffer++;
-			std::cin >> *inBuffer++;
+	void getOutputSamples(FloatSample *outBuffer, unsigned int size) {
+		if (inLength == 0) {
+			Synth::muteSampleBuffer(outBuffer, CHANNEL_COUNT * size);
+			return;
 		}
+		const unsigned int framesToCopy = inLength < size ? inLength : size;
+		const unsigned int samplesToCopy = CHANNEL_COUNT * framesToCopy;
+		memcpy(outBuffer, inp, sizeof(FloatSample) * samplesToCopy);
+		inp += samplesToCopy;
+		inLength -= framesToCopy;
+		size -= framesToCopy;
+		if (size > 0) {
+			outBuffer += samplesToCopy;
+			Synth::muteSampleBuffer(outBuffer, CHANNEL_COUNT * size);
+		}
+	}
+};
+
+void readInputSamples(FloatSample in[], unsigned &inLength) {
+	FloatSample *inp = in;
+	while (!std::cin.eof() && inLength < MAX_SAMPLES_PER_RUN) {
+		inLength++;
+		std::cin >> *inp++;
+		std::cin >> *inp++;
 	}
 }
 
-void Synth::render(Bit16s *inBuffer, Bit32u inLength) {
-	::render(inBuffer, inLength);
+void generateDelta(FloatSample in[], unsigned &inLength) {
+	inLength++;
+	in[0] = 1.0;
+	in[1] = 0.0;
 }
 
-void Synth::render(float *inBuffer, Bit32u inLength) {
-	::render(inBuffer, inLength);
+void generateStep(FloatSample in[], unsigned &inLength) {
+	FloatSample *inp = in;
+	const unsigned pulseLength = MAX_SAMPLES_PER_RUN >> 1;
+	while (inLength < pulseLength) {
+		inLength++;
+		*inp++ = 1.0;
+		*inp++ = 0.0;
+	}
+}
+
+void generateSine(FloatSample in[], unsigned &inLength, double frequency) {
+	FloatSample *inp = in;
+	while (inLength < MAX_SAMPLES_PER_RUN) {
+		inLength++;
+		*inp++ = FloatSample(sin(inLength * frequency));
+		*inp++ = 0.0;
+	}
 }
 
 int main(int argc, char *argv[]) {
 	if (argc != 2) {
-		std::cout << "Usage: mt32emu_SampleRateConverter_tester <target_sample_rate>";
+		std::cerr << "Usage: mt32emu_SampleRateConverter_tester <target_sample_rate>";
 		return 1;
 	}
-	float sampleRate;
-	if (sscanf_s(argv[1], "%f", &sampleRate) != 1) {
-		std::cout << "Usage: mt32emu_SampleRateConverter_tester <target_sample_rate>";
+	double sampleRate;
+	if (sscanf_s(argv[1], "%lf", &sampleRate) != 1) {
+		std::cerr << "Usage: mt32emu_SampleRateConverter_tester <target_sample_rate>";
 		return 1;
 	}
-	Synth synth;
-	SampleRateConverter &src = *SampleRateConverter::createSampleRateConverter(&synth, sampleRate, SampleRateConverter::SRC_FASTEST);
-	Bit16s out[2 * MAX_SAMPLES_PER_RUN];
+	FloatSample in[CHANNEL_COUNT * MAX_SAMPLES_PER_RUN];
+	unsigned inLength = 0;
+	readInputSamples(in, inLength);
+//	generateDelta(in, inLength);
+//	generateStep(in, inLength);
+//	generateSine(in, inLength, 2.0 * 3.14159265358979323846 * sampleRate * 128.0 / 1024.0);
+	ArrayFloatSampleProvider inSampleProvider(in, inLength);
+	ResamplerStage &resamplerStage = *SincResampler::createSincResampler(1.0, sampleRate, 0.25, 0.5, 106, 256);
+//	ResamplerStage &resamplerStage = *new IIR2xInterpolator(IIRResampler::FAST);
+	FloatSampleProvider &src = ResamplerModel::createResamplerModel(inSampleProvider, resamplerStage);
+	const unsigned outLength = MAX_SAMPLES_PER_RUN;
+	FloatSample out[CHANNEL_COUNT * outLength];
 	LARGE_INTEGER freq, startTime, endTime;
 	QueryPerformanceFrequency(&freq);
+	unsigned framesTotal = outLength;
+	unsigned framesPerRun = framesTotal;
+	FloatSample *outp = out;
 	QueryPerformanceCounter(&startTime);
-	int framesTotal = 30;
-	int framesPerRun = 1;
-	for (int i = 0; i < framesTotal; i += framesPerRun)
-		src.getOutputSamples(out + 2 * i, framesPerRun);
+	while (0 < framesTotal) {
+		src.getOutputSamples(outp, framesPerRun);
+		outp += CHANNEL_COUNT * framesPerRun;
+		framesTotal -= framesPerRun;
+	}
 	QueryPerformanceCounter(&endTime);
 	double time = double(endTime.QuadPart - startTime.QuadPart) / freq.QuadPart;
 	std::cerr << "Elapsed time: " << time * 1e3 << " msec" << std::endl;
 	std::cout.precision(17);
-	for (int i = 0; i < 2 * framesTotal; i += 2) {
+	for (unsigned i = 0; i < CHANNEL_COUNT * outLength; i += CHANNEL_COUNT) {
 		std::cout << out[i] << "\t" << out[i + 1] << std::endl;
 	}
 	return 0;
