@@ -5,7 +5,7 @@
 
   !define VERSION "2.2.0"
   !define PATCH  "0"
-  !define INST_DIR "munt-${VERSION}-win32"
+  !define INST_DIR "munt-${VERSION}-amd64"
 
 ;--------------------------------
 ;Variables
@@ -25,14 +25,14 @@
   !include "MUI.nsh"
 
   ;Default installation folder
-  InstallDir "$PROGRAMFILES\munt"
+  InstallDir "$PROGRAMFILES64\munt"
 
 ;--------------------------------
 ;General
 
   ;Name and file
   Name "Munt - MT-32 Sound Module Emulator"
-  OutFile "munt-${VERSION}-win32.exe"
+  OutFile "munt-${VERSION}-amd64.exe"
 
   ;Set compression
   SetCompressor lzma
@@ -546,7 +546,7 @@ FunctionEnd
 ;Pages
   !insertmacro MUI_PAGE_WELCOME
 
-  !insertmacro MUI_PAGE_LICENSE "munt-${VERSION}-win32/docs/mt32emu_qt/COPYING.txt"
+  !insertmacro MUI_PAGE_LICENSE "munt-${VERSION}-amd64/docs/mt32emu_qt/COPYING.txt"
   Page custom InstallOptionsPage
   !insertmacro MUI_PAGE_DIRECTORY
 
@@ -645,6 +645,7 @@ Section "-Core installation"
 
   ;Register MIDI driver
   Exec '"$INSTDIR\mt32emu_win32drv\drvsetup.exe" install'
+  Exec '"$INSTDIR\mt32emu_win32drv_amd64\drvsetup.exe" install'
 
   ;Create uninstaller
   WriteUninstaller "$INSTDIR\Uninstall.exe"
@@ -825,16 +826,20 @@ Section "Uninstall"
 
   ;Unregister MIDI driver
   ExecWait '"$INSTDIR\mt32emu_win32drv\drvsetup.exe" uninstall'
+  ExecWait '"$INSTDIR\mt32emu_win32drv_amd64\drvsetup.exe" uninstall'
 
   ;Remove files we installed.
   ;Keep the list of directories here in sync with the File commands above.
-  Delete "$INSTDIR\intl.dll"
   Delete "$INSTDIR\libglib-2.0-0.dll"
+  Delete "$INSTDIR\libiconv-2.dll"
+  Delete "$INSTDIR\libintl-8.dll"
   Delete "$INSTDIR\mt32emu-qt.exe"
   Delete "$INSTDIR\mt32emu-smf2wav.exe"
   Delete "$INSTDIR\mt32emu_win32drv\drvsetup.exe"
   Delete "$INSTDIR\mt32emu_win32drv\mt32emu.dll"
   Delete "$INSTDIR\mt32emu_win32drv\mt32emu.inf"
+  Delete "$INSTDIR\mt32emu_win32drv_amd64\drvsetup.exe"
+  Delete "$INSTDIR\mt32emu_win32drv_amd64\mt32emu.dll"
   Delete "$INSTDIR\docs\mt32emu\AUTHORS.txt"
   Delete "$INSTDIR\docs\mt32emu\COPYING.LESSER.txt"
   Delete "$INSTDIR\docs\mt32emu\COPYING.txt"
@@ -855,6 +860,7 @@ Section "Uninstall"
   Delete "$INSTDIR\docs\mt32emu_win32drv\README.txt"
 
   RMDir "$INSTDIR\mt32emu_win32drv"
+  RMDir "$INSTDIR\mt32emu_win32drv_amd64"
   RMDir "$INSTDIR\docs\mt32emu"
   RMDir "$INSTDIR\docs\mt32emu_qt"
   RMDir "$INSTDIR\docs\mt32emu_smf2wav"
