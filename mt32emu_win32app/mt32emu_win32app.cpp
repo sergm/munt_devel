@@ -5,7 +5,16 @@
 
 //int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd)
 int main() {
-	std::cout << "Enter input MIDI device ID: ";
+	std::cout << "Available MIDI in devices:" << std::endl;
+	UINT midiInDeviceCount = midiInGetNumDevs();
+	for (UINT deviceIx = 0; deviceIx < midiInDeviceCount; deviceIx++) {
+		MIDIINCAPS caps = {};
+		MMRESULT res = midiInGetDevCaps(deviceIx, &caps, sizeof(caps));
+		if (res == MMSYSERR_NOERROR) {
+			std::wcout << deviceIx << ": " << caps.szPname << std::endl;
+		}
+	}
+	std::cout << std::endl << "Enter input MIDI device ID: ";
 	unsigned int midiDevID = 0;
 	std::cin >> midiDevID;
 
