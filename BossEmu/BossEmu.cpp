@@ -34,7 +34,7 @@ static const int RAM_SIZE = 0x4000;
 static const int PROCESSING_LOOP_CYCLES = 0x100;
 // FIXME: Is this different in Boss h/w other than MT-32/CM-32L?
 static const int MAX_RIGHT_DATA_IN_CYCLE = 0x80;
-// The ouput points seem to be hardwired
+// The output points seem to be hardwired
 static const int RIGHT_DATA_OUT_CYCLE = 0xBC;
 static const int LEFT_DATA_OUT_CYCLE = 0xE0;
 
