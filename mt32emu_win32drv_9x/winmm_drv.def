@@ -1,0 +1,17 @@
+LIBRARY     mt32emu
+
+DESCRIPTION 'midi:MT-32 Synth Emulator'
+
+EXETYPE     WINDOWS
+
+PROTMODE
+
+CODE        MOVEABLE DISCARDABLE LOADONCALL
+DATA        FIXED SINGLE PRELOAD
+
+SEGMENTS    _FIX    FIXED                PRELOAD
+
+HEAPSIZE    2048
+
+EXPORTS     DriverProc   @1          RESIDENTNAME
+            modMessage   @2          RESIDENTNAME

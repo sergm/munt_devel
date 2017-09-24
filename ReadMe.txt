@@ -4,6 +4,8 @@ devel - test programs helping research of filtered square wave generation
 
 mt32emu_win32app - MT32Emu WinMM Application (console + CLR / .NET)
 
+mt32emu_win32drv_9x - MT32Emu WinMM MIDI driver for Windows 9x.
+
 mt32emu_win32_installer - NSIS scripts used in munt Windows installer package
 
 MIDI_stuff - drivers and utilites which can appear useful for specific MIDI-related tasks

@@ -1,0 +1,5 @@
+[disks]
+1 =. ,"MT-32 Synth Emulator",disk1
+
+[Installable.Drivers]
+mt32emu = 1:mt32emu.drv, "MIDI", "MT-32 Synth Emulator",,,
