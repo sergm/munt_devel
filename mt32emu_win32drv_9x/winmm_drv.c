@@ -23,6 +23,7 @@
 #include <mmsystem.h>
 #include <mmreg.h>
 #include <mmddk.h>
+#include <toolhelp.h>
 
 #define MAX_DRIVERS 2
 
@@ -292,21 +293,21 @@ LRESULT FAR PASCAL _loadds modMessage(UINT uDeviceID, UINT uMsg, DWORD dwUser, D
 	switch (uMsg) {
 	case MODM_OPEN: {
 		DWORD result;
+		TASKENTRY taskEntry = { sizeof(TASKENTRY) };
 		if (checkWindow()) return MMSYSERR_NOTENABLED;
 		result = openDriver(driver, uDeviceID, uMsg, (LPLONG)dwUser, dwParam1, dwParam2);
 		if (result != MMSYSERR_NOERROR) return result;
+		TaskFindHandle(&taskEntry, GetCurrentTask());
 		updateTickCounter();
 
 		{
-			static const char MIDI_SESSION_NAME_FORMAT[] = "Windows MME Session #%i";
-
 			const double nanoTime = (tickCounterWraps * 4294967296.0 + tickCounter) * 1e6;
 			/* 0, handshake indicator, version, timestamp, MIDI session name. */
 			DWORD msg[12] = { 0, (DWORD)-1, 1, (DWORD)nanoTime, (DWORD)(nanoTime / 4294967296.0) };
 			const COPYDATASTRUCT cds = { 0, sizeof(msg), msg };
 			DWORD clientIx = *(LPLONG)dwUser;
 
-			wsprintf((LPSTR)&msg[5], MIDI_SESSION_NAME_FORMAT, clientIx);
+			strcpy(&msg[5], taskEntry.szModule);
 			driver->clients[clientIx].synthInstance = (DWORD)SendMessage(hwnd, WM_COPYDATA, NULL, (LPARAM)&cds);
 			return result;
 		}
