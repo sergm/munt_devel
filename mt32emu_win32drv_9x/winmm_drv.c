@@ -24,8 +24,9 @@
 #include <mmreg.h>
 #include <mmddk.h>
 #include <toolhelp.h>
+#include <wownt16.h>
 
-#define MAX_DRIVERS 2
+#define MAX_DRIVERS 1
 
 /* Per driver */
 #define MAX_CLIENTS 8
@@ -36,11 +37,24 @@
 /* Private message posted to the synth application to initiate safe MIDI data transfer. */
 #define WM_APP_DRV_HAS_DATA WM_APP + 1
 
-/* Private message sent by the synth application to retrieve the MIDI data available. */
-#define DRVM_USER_WANTS_DATA DRVM_USER
+#define RING_BUFFER_SIZE 0x8000
+#define RING_BUFFER_IX_MASK 0x7fff
 
-#define RING_BUFFER_SIZE 128
-#define RING_BUFFER_IX_MASK RING_BUFFER_SIZE - 1
+#define BUFFER_END_MARKER 0
+#define BUFFER_WRAP_MARKER 1
+#define SHORT_MESSAGE_MARKER 2
+#define MT32EMU_MAGIC 0x3264
+
+/* The data block format is as follows:
+ * WORD - block length
+ * WORD - synth instance ID
+ * DWORD - millisecond timestamp
+ * data payload:
+ * - either DWORD for short message
+ * - raw data bytes for long message
+ */
+#define DATA_HEADER_LENGTH 8
+#define SHORT_MESSAGE_LENGTH 4
 
 /* Defined in WIN32 API only. */
 typedef struct tagCOPYDATASTRUCT {
@@ -48,11 +62,6 @@ typedef struct tagCOPYDATASTRUCT {
 	DWORD cbData;
 	LPVOID lpData;
 } COPYDATASTRUCT;
-
-enum MIDIEventDataType {
-	MIDI_SHORT_DATA,
-	MIDI_LONG_DATA
-};
 
 static struct Driver {
 	BOOL open;
@@ -67,37 +76,28 @@ static struct Driver {
 	} clients[MAX_CLIENTS];
 } drivers[MAX_DRIVERS];
 
-static struct MIDIEvent {
-	BYTE driverIx;
-	BYTE clientIx;
-	WORD midiDataType;
-	DWORD midiData;
-	DWORD timestampLow;
-	DWORD timestampHigh;
-} ringBuffer[RING_BUFFER_SIZE];
-
-static DWORD tickCounter;
-static DWORD tickCounterWraps;
+/* Windows 9x permits very limited processing of received MIDI messages.
+ * Thus, they are written to a ring buffer, and the receiving synth application
+ * is informed to acquire them. Also, long data messages are actually copied
+ * to the ring buffer, so the application buffers are returned immediately.
+ * To reduce 16/32 bit context switch overhead, the ring buffer is shared
+ * with the receiving synth application.
+ */
+static BYTE ringBuffer[RING_BUFFER_SIZE + 3 * 2]; /* Appended space for ringBufferStart + ringBufferEnd + magic. */
+static const PWORD ringBufferStart = (PWORD)&ringBuffer[RING_BUFFER_SIZE]; /* Keeps index of the first byte to read. */
+static const PWORD ringBufferEnd = (PWORD)&ringBuffer[RING_BUFFER_SIZE] + 1; /* Keeps index of the first byte to write. */
 
 static HWND hwnd = NULL;
 static WORD driverCount;
 
-static UINT ringBufferStart = 0;
-static UINT ringBufferEnd = 0;
-
 static BOOL checkWindow() {
 	if (hwnd == NULL) {
 		hwnd = FindWindow("mt32emu_class", NULL);
-		ringBufferStart = 0;
-		ringBufferEnd = 0;
+		*(PWORD)&ringBuffer[0] = BUFFER_END_MARKER;
+		*ringBufferStart = 0;
+		*ringBufferEnd = 0;
 	}
 	return hwnd == NULL;
-}
-
-static void updateTickCounter() {
-	DWORD currentTime = timeGetTime();
-	if (currentTime < tickCounter) tickCounterWraps++;
-	tickCounter = currentTime;
 }
 
 static DWORD modGetCaps(DWORD capsPtr, DWORD capsSize) {
@@ -168,25 +168,58 @@ static DWORD closeDriver(struct Driver *driver, UINT uDeviceID, UINT uMsg, DWORD
 	return MMSYSERR_NOERROR;
 }
 
-static BOOL pushEvent(WORD driverIx, WORD clientIx, WORD dataType, DWORD data) {
-	const UINT newRingBufferEnd = (ringBufferEnd + 1) & RING_BUFFER_IX_MASK;
+static BOOL pushEvent(DWORD synthInstance, WORD dataLength, DWORD data) {
+	/* Additional space for BUFFER_END_MARKER after the last data block. */
+	static const UINT RESERVED_BYTES = 2;
+
+	const UINT bytesInBuffer = (*ringBufferEnd - *ringBufferStart) & RING_BUFFER_IX_MASK;
+	const UINT bytesFree = RING_BUFFER_SIZE - bytesInBuffer;
+	const UINT dataBlockLength = DATA_HEADER_LENGTH + (dataLength ? dataLength : SHORT_MESSAGE_LENGTH);
+	UINT newRingBufferEnd = *ringBufferEnd + dataBlockLength;
 	BOOL result;
-	updateTickCounter();
-	if (ringBufferStart != newRingBufferEnd) {
-		ringBuffer[ringBufferEnd].driverIx = (BYTE)driverIx;
-		ringBuffer[ringBufferEnd].clientIx = (BYTE)clientIx;
-		ringBuffer[ringBufferEnd].midiDataType = dataType;
-		ringBuffer[ringBufferEnd].midiData = data;
-		ringBuffer[ringBufferEnd].timestampLow = tickCounter;
-		ringBuffer[ringBufferEnd].timestampHigh = tickCounterWraps;
-		ringBufferEnd = newRingBufferEnd;
-		result = TRUE;
-	} else {
+
+	if (bytesFree <= dataBlockLength + RESERVED_BYTES) {
 		/* Buffer overflow. */
 		result = FALSE;
+	} else if (RING_BUFFER_SIZE <= newRingBufferEnd + RESERVED_BYTES) {
+		if (*ringBufferStart <= dataBlockLength + RESERVED_BYTES) {
+			/* Buffer overflow. */
+			result = FALSE;
+		} else {
+			/* Buffer wrapped. */
+			*(PWORD)&ringBuffer[0] = BUFFER_END_MARKER;
+			*(PWORD)&ringBuffer[*ringBufferEnd] = BUFFER_WRAP_MARKER;
+			*ringBufferEnd = 0;
+			newRingBufferEnd = dataBlockLength;
+			result = TRUE;
+		}
+	} else {
+		result = TRUE;
 	}
 
-	if (!PostMessage(hwnd, WM_APP_DRV_HAS_DATA, NULL, NULL)) {
+	if (result) {
+		union {
+			PBYTE b;
+			PWORD w;
+			PDWORD d;
+		} p;
+		p.b = &ringBuffer[*ringBufferEnd];
+		p.w++;
+		*p.w++ = (WORD)synthInstance;
+		*p.d++ = timeGetTime();
+
+		*(PWORD)&ringBuffer[newRingBufferEnd] = BUFFER_END_MARKER;
+		if (dataLength) {
+			_fmemcpy(p.b, (LPVOID)data, dataLength);
+			*(PWORD)&ringBuffer[*ringBufferEnd] = dataBlockLength;
+		} else {
+			*p.d = data;
+			*(PWORD)&ringBuffer[*ringBufferEnd] = SHORT_MESSAGE_MARKER;
+		}
+		*ringBufferEnd = newRingBufferEnd;
+	}
+
+	if (!PostMessage(hwnd, WM_APP_DRV_HAS_DATA, NULL, (LPARAM)GetVDMPointer32W(ringBuffer, 1))) {
 		/* Synth app failed to find our session or was terminated. Better try to reconnect. */
 		hwnd = NULL;
 	}
@@ -198,6 +231,7 @@ LRESULT FAR PASCAL _loadds DriverProc(DWORD dwDriverID, HDRVR hdrvr, WPARAM wMes
 	case DRV_LOAD:
 		memset(drivers, 0, sizeof(drivers));
 		driverCount = 0;
+		*(ringBufferEnd + 1) = MT32EMU_MAGIC;
 		return DRV_OK;
 
 	case DRV_ENABLE:
@@ -253,37 +287,6 @@ LRESULT FAR PASCAL _loadds DriverProc(DWORD dwDriverID, HDRVR hdrvr, WPARAM wMes
 
 	case DRV_REMOVE:
 		return DRV_OK;
-
-	case DRVM_USER_WANTS_DATA:
-		/* First, try to restore connection if lost, then ensure this is the right connection. */
-		if (checkWindow() || hwnd != (HWND)dwParam1) return DRV_CANCEL;
-
-		while (ringBufferStart != ringBufferEnd) {
-			const struct MIDIEvent * const currentEvent = &ringBuffer[ringBufferStart];
-			const WORD currentDriverIx = currentEvent->driverIx;
-			const DWORD currentClientIx = currentEvent->clientIx;
-			const DWORD synthInstance = drivers[currentDriverIx].clients[currentClientIx].synthInstance;
-
-			if (currentEvent->midiDataType == MIDI_SHORT_DATA) {
-				const double nanoTime = (currentEvent->timestampHigh * 4294967296.0 + currentEvent->timestampLow) * 1e6;
-				/* 0, short MIDI message indicator, timestamp, data */
-				DWORD msg[] = { 0, 0, (DWORD)nanoTime, (DWORD)(nanoTime / 4294967296.0), currentEvent->midiData };
-				const COPYDATASTRUCT cds = { synthInstance, sizeof(msg), msg };
-				const LRESULT res = SendMessage(hwnd, WM_COPYDATA, NULL, (LPARAM)&cds);
-				if (res != 1 && (checkWindow() || hwnd != (HWND)dwParam1)) return DRV_CANCEL;
-			} else {
-				const LPMIDIHDR midiHdr = (LPMIDIHDR)currentEvent->midiData;
-				const COPYDATASTRUCT cds = { synthInstance, midiHdr->dwBufferLength, midiHdr->lpData };
-				const LRESULT res = SendMessage(hwnd, WM_COPYDATA, NULL, (LPARAM)&cds);
-				if (res != 1 && (checkWindow() || hwnd != (HWND)dwParam1)) return DRV_CANCEL;
-				midiHdr->dwFlags |= MHDR_DONE;
-				midiHdr->dwFlags &= ~MHDR_INQUEUE;
-				DoCallback(currentDriverIx, currentClientIx, MOM_DONE, currentEvent->midiData, NULL);
-			}
-			ringBufferStart = (ringBufferStart + 1) & RING_BUFFER_IX_MASK;
-		}
-		return DRV_OK;
-
 	}
 	return DefDriverProc(dwDriverID, hdrvr, wMessage, dwParam1, dwParam2);
 }
@@ -298,10 +301,9 @@ LRESULT FAR PASCAL _loadds modMessage(UINT uDeviceID, UINT uMsg, DWORD dwUser, D
 		result = openDriver(driver, uDeviceID, uMsg, (LPLONG)dwUser, dwParam1, dwParam2);
 		if (result != MMSYSERR_NOERROR) return result;
 		TaskFindHandle(&taskEntry, GetCurrentTask());
-		updateTickCounter();
 
 		{
-			const double nanoTime = (tickCounterWraps * 4294967296.0 + tickCounter) * 1e6;
+			const double nanoTime = timeGetTime() * 1e6;
 			/* 0, handshake indicator, version, timestamp, MIDI session name. */
 			DWORD msg[12] = { 0, (DWORD)-1, 1, (DWORD)nanoTime, (DWORD)(nanoTime / 4294967296.0) };
 			const COPYDATASTRUCT cds = { 0, sizeof(msg), msg };
@@ -341,7 +343,7 @@ LRESULT FAR PASCAL _loadds modMessage(UINT uDeviceID, UINT uMsg, DWORD dwUser, D
 		if (driver->clients[dwUser].allocated == FALSE) return MMSYSERR_NOTENABLED;
 		if (reentranceLock || hwnd == NULL) return MIDIERR_NOTREADY;
 		reentranceLock = TRUE;
-		result = pushEvent(uDeviceID, (WORD)dwUser, MIDI_SHORT_DATA, dwParam1);
+		result = pushEvent(driver->clients[dwUser].synthInstance, 0, dwParam1);
 		reentranceLock = FALSE;
 		return result ? MMSYSERR_NOERROR : MIDIERR_NOTREADY;
 	}
@@ -353,12 +355,13 @@ LRESULT FAR PASCAL _loadds modMessage(UINT uDeviceID, UINT uMsg, DWORD dwUser, D
 		if ((midiHdr->dwFlags & MHDR_PREPARED) == 0) return MIDIERR_UNPREPARED;
 		if (reentranceLock || hwnd == NULL) return MIDIERR_NOTREADY;
 		reentranceLock = TRUE;
-		if (!pushEvent(uDeviceID, (WORD)dwUser, MIDI_LONG_DATA, dwParam1)) {
+		if (midiHdr->dwBufferLength < RING_BUFFER_SIZE && !pushEvent(driver->clients[dwUser].synthInstance, (WORD)midiHdr->dwBufferLength, (DWORD)midiHdr->lpData)) {
 			reentranceLock = FALSE;
 			return MIDIERR_NOTREADY;
 		}
-		midiHdr->dwFlags &= ~MHDR_DONE;
-		midiHdr->dwFlags |= MHDR_INQUEUE;
+		midiHdr->dwFlags |= MHDR_DONE;
+		midiHdr->dwFlags &= ~MHDR_INQUEUE;
+		DoCallback(uDeviceID, dwUser, MOM_DONE, dwParam1, NULL);
 		reentranceLock = FALSE;
 		return MMSYSERR_NOERROR;
 	}
