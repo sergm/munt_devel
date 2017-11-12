@@ -145,6 +145,32 @@ static DWORD openDriver(struct Driver *driver, UINT uDeviceID, UINT uMsg, LPLONG
 	}
 
 	{
+		TASKENTRY taskEntry = { sizeof(TASKENTRY) };
+		const double nanoTime = timeGetTime() * 1e6;
+		/* 0, handshake indicator, version, timestamp, MIDI session name. */
+		DWORD msg[12] = { 0, (DWORD)-1, 1, (DWORD)nanoTime, (DWORD)(nanoTime / 4294967296.0) };
+		const COPYDATASTRUCT cds = { 0, sizeof(msg), msg };
+		DWORD synthInstance;
+
+		TaskFindHandle(&taskEntry, GetCurrentTask());
+		strcpy(&msg[5], taskEntry.szModule);
+		synthInstance = (DWORD)SendMessage(hwnd, WM_COPYDATA, NULL, (LPARAM)&cds);
+		if (!synthInstance) {
+			/* Synth app failed to create MIDI session or was terminated. Better try to reconnect and re-send the message. */
+			hwnd = NULL;
+			if (checkWindow()) return MMSYSERR_NOTENABLED;
+			synthInstance = (DWORD)SendMessage(hwnd, WM_COPYDATA, NULL, (LPARAM)&cds);
+			if (!synthInstance) {
+				/* Synth app failed to create MIDI session or was suddenly terminated. Give up but ensure we'll reconnect on next attempt. */
+				hwnd = NULL;
+				return MMSYSERR_NOTENABLED;
+			}
+		}
+		driver->clients[clientNum].synthInstance = synthInstance;
+	}
+
+	/* OK, now we can actually allocate new client. */
+	{
 		LPMIDIOPENDESC desc = (LPMIDIOPENDESC)dwParam1;
 		driver->clients[clientNum].allocated = TRUE;
 		driver->clients[clientNum].flags = HIWORD(dwParam2);
@@ -160,7 +186,13 @@ static DWORD openDriver(struct Driver *driver, UINT uDeviceID, UINT uMsg, LPLONG
 
 static DWORD closeDriver(struct Driver *driver, UINT uDeviceID, UINT uMsg, DWORD dwUser, DWORD dwParam1, DWORD dwParam2) {
 	if (!driver->clients[dwUser].allocated) {
-		return MMSYSERR_INVALPARAM;
+		return MMSYSERR_NOTENABLED;
+	}
+	if (hwnd != NULL) {
+		/* End of session message */
+		const DWORD res = (DWORD)SendMessage(hwnd, WM_APP, (WPARAM)driver->clients[dwUser].synthInstance, NULL);
+		/* Synth app failed to clean up properly or was terminated. Better try to reconnect. */
+		if (res != 1) hwnd = NULL;
 	}
 	driver->clients[dwUser].allocated = FALSE;
 	driver->clientCount--;
@@ -295,37 +327,11 @@ LRESULT FAR PASCAL _loadds modMessage(UINT uDeviceID, UINT uMsg, DWORD dwUser, D
 	struct Driver * const driver = &drivers[uDeviceID];
 	switch (uMsg) {
 	case MODM_OPEN: {
-		DWORD result;
-		TASKENTRY taskEntry = { sizeof(TASKENTRY) };
 		if (checkWindow()) return MMSYSERR_NOTENABLED;
-		result = openDriver(driver, uDeviceID, uMsg, (LPLONG)dwUser, dwParam1, dwParam2);
-		if (result != MMSYSERR_NOERROR) return result;
-		TaskFindHandle(&taskEntry, GetCurrentTask());
-
-		{
-			const double nanoTime = timeGetTime() * 1e6;
-			/* 0, handshake indicator, version, timestamp, MIDI session name. */
-			DWORD msg[12] = { 0, (DWORD)-1, 1, (DWORD)nanoTime, (DWORD)(nanoTime / 4294967296.0) };
-			const COPYDATASTRUCT cds = { 0, sizeof(msg), msg };
-			DWORD clientIx = *(LPLONG)dwUser;
-
-			strcpy(&msg[5], taskEntry.szModule);
-			driver->clients[clientIx].synthInstance = (DWORD)SendMessage(hwnd, WM_COPYDATA, NULL, (LPARAM)&cds);
-			return result;
-		}
+		return openDriver(driver, uDeviceID, uMsg, (LPLONG)dwUser, dwParam1, dwParam2);
 	}
 
 	case MODM_CLOSE:
-		if (driver->clients[dwUser].allocated == FALSE) return MMSYSERR_NOTENABLED;
-		checkWindow();
-
-		{
-			/* End of session message */
-			const DWORD res = (DWORD)SendMessage(hwnd, WM_APP, (WPARAM)driver->clients[dwUser].synthInstance, NULL);
-			/* Synth app failed to clean up properly or was terminated. Better try to reconnect. */
-			if (res != 1) hwnd = NULL;
-		}
-
 		return closeDriver(driver, uDeviceID, uMsg, dwUser, dwParam1, dwParam2);
 
 	case MODM_RESET:
@@ -340,8 +346,8 @@ LRESULT FAR PASCAL _loadds modMessage(UINT uDeviceID, UINT uMsg, DWORD dwUser, D
 	case MODM_DATA: {
 		static BOOL reentranceLock = FALSE;
 		BOOL result;
-		if (driver->clients[dwUser].allocated == FALSE) return MMSYSERR_NOTENABLED;
-		if (reentranceLock || hwnd == NULL) return MIDIERR_NOTREADY;
+		if (driver->clients[dwUser].allocated == FALSE || hwnd == NULL) return MMSYSERR_NOTENABLED;
+		if (reentranceLock) return MIDIERR_NOTREADY;
 		reentranceLock = TRUE;
 		result = pushEvent(driver->clients[dwUser].synthInstance, 0, dwParam1);
 		reentranceLock = FALSE;
@@ -351,9 +357,9 @@ LRESULT FAR PASCAL _loadds modMessage(UINT uDeviceID, UINT uMsg, DWORD dwUser, D
 	case MODM_LONGDATA: {
 		static BOOL reentranceLock = FALSE;
 		const LPMIDIHDR midiHdr = (LPMIDIHDR)dwParam1;
-		if (driver->clients[dwUser].allocated == FALSE) return MMSYSERR_NOTENABLED;
+		if (driver->clients[dwUser].allocated == FALSE || hwnd == NULL) return MMSYSERR_NOTENABLED;
 		if ((midiHdr->dwFlags & MHDR_PREPARED) == 0) return MIDIERR_UNPREPARED;
-		if (reentranceLock || hwnd == NULL) return MIDIERR_NOTREADY;
+		if (reentranceLock) return MIDIERR_NOTREADY;
 		reentranceLock = TRUE;
 		if (midiHdr->dwBufferLength < RING_BUFFER_SIZE && !pushEvent(driver->clients[dwUser].synthInstance, (WORD)midiHdr->dwBufferLength, (DWORD)midiHdr->lpData)) {
 			reentranceLock = FALSE;
