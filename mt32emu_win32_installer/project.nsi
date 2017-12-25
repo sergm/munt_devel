@@ -3,7 +3,7 @@
 ;--------------------------------
 ; You must define these values
 
-  !define VERSION "2.2.0"
+  !define VERSION "2.3.0"
   !define PATCH  "0"
   !define INST_DIR "munt-${VERSION}-win32"
 
@@ -36,6 +36,9 @@
 
   ;Set compression
   SetCompressor lzma
+
+  ;Require administrator access
+  RequestExecutionLevel admin
 
 
 
@@ -119,7 +122,7 @@ Var AR_RegFlags
  "exit_${SecName}:"
 !macroend
 
-!macro RemoveSection SecName
+!macro RemoveSection_CPack SecName
   ;  This macro is used to call section's Remove_... macro
   ;from the uninstaller.
   ;Input: section index constant name specified in Section command.
@@ -153,13 +156,6 @@ Var AR_RegFlags
 
   !define MUI_HEADERIMAGE
   !define MUI_ABORTWARNING
-
-;--------------------------------
-; path functions
-
-!verbose 3
-!include "WinMessages.NSH"
-!verbose 4
 
 ;----------------------------------------
 ; based upon a script of "Written by KiCHiK 2003-01-18 05:57:02"
@@ -693,7 +689,7 @@ Section "-Core installation"
 
   ;Create shortcuts
   CreateDirectory "$SMPROGRAMS\$STARTMENU_FOLDER"
-  CreateShortCut "$SMPROGRAMS\$STARTMENU_FOLDER\Munt MT-32 Sound Module Emulator.lnk" "$INSTDIR\mt32emu-qt.exe"
+  CreateShortCut "$SMPROGRAMS\$STARTMENU_FOLDER\Munt MT-32 Sound Module Emulator.lnk" "$INSTDIR\mt32emu-qt.exe" "" "$INSTDIR\mt32emu-qt.ico"
 
 
   CreateShortCut "$SMPROGRAMS\$STARTMENU_FOLDER\Uninstall.lnk" "$INSTDIR\Uninstall.exe"
@@ -831,10 +827,12 @@ Section "Uninstall"
   Delete "$INSTDIR\intl.dll"
   Delete "$INSTDIR\libglib-2.0-0.dll"
   Delete "$INSTDIR\mt32emu-qt.exe"
+  Delete "$INSTDIR\mt32emu-qt.ico"
   Delete "$INSTDIR\mt32emu-smf2wav.exe"
   Delete "$INSTDIR\mt32emu_win32drv\drvsetup.exe"
   Delete "$INSTDIR\mt32emu_win32drv\mt32emu.dll"
   Delete "$INSTDIR\mt32emu_win32drv\mt32emu.inf"
+  Delete "$INSTDIR\mt32emu_win32drv\mt32emu_x64.dll"
   Delete "$INSTDIR\docs\mt32emu\AUTHORS.txt"
   Delete "$INSTDIR\docs\mt32emu\COPYING.LESSER.txt"
   Delete "$INSTDIR\docs\mt32emu\COPYING.txt"
@@ -878,7 +876,7 @@ Section "Uninstall"
   DeleteRegKey SHCTX "Software\muntemu.org\munt ${VERSION}"
 
   ; Removes all optional components
-  !insertmacro SectionList "RemoveSection"
+  !insertmacro SectionList "RemoveSection_CPack"
 
   !insertmacro MUI_STARTMENU_GETFOLDER Application $MUI_TEMP
 
@@ -945,13 +943,15 @@ Function .onInit
 
   MessageBox MB_YESNOCANCEL|MB_ICONEXCLAMATION \
   "munt ${VERSION} is already installed. $\n$\nDo you want to uninstall the old version before installing the new one?" \
-  IDYES uninst IDNO inst
+  /SD IDYES IDYES uninst IDNO inst
   Abort
 
 ;Run the uninstaller
 uninst:
   ClearErrors
-  ExecWait '$0 _?=$INSTDIR' ;Do not copy the uninstaller to a temp file
+  StrLen $2 "\Uninstall.exe"
+  StrCpy $3 $0 -$2 # remove "\Uninstall.exe" from UninstallString to get path
+  ExecWait '"$0" /S _?=$3' ;Do not copy the uninstaller to a temp file
 
   IfErrors uninst_failed inst
 uninst_failed:
