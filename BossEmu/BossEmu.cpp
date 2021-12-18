@@ -84,7 +84,7 @@ void BossEmu::setParameters(int mode, int time, int level) {
 		romBaseIx = (mode << 12) | ((level & 7) << 9) | ((time & 4) << 6);
 		sawBits = 1 << (time & 3);
 	} else if (emuMode == RV_2_EMU_MODE) {
-		mode = extendedModesEnabled ? mode & 0x10 : mode & 0x0F;
+		mode = extendedModesEnabled ? mode & 0x1F : mode & 0x0F;
 		romBaseIx = (mode << 10) | ((time & 0x0C) << 6);
 		sawBits = 1 << (time & 3);
 	}
