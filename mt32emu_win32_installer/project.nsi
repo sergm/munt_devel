@@ -3,7 +3,7 @@
 ;--------------------------------
 ; You must define these values
 
-  !define VERSION "2.5.0"
+  !define VERSION "2.6.2"
   !define PATCH  "0"
   !define INST_DIR "munt-${VERSION}-win32"
 
@@ -824,8 +824,10 @@ Section "Uninstall"
 
   ;Remove files we installed.
   ;Keep the list of directories here in sync with the File commands above.
-  Delete "$INSTDIR\intl.dll"
+  Delete "$INSTDIR\libgcc_s_dw2-1.dll"
   Delete "$INSTDIR\libglib-2.0-0.dll"
+  Delete "$INSTDIR\libiconv-2.dll"
+  Delete "$INSTDIR\libintl-8.dll"
   Delete "$INSTDIR\mt32emu-qt.exe"
   Delete "$INSTDIR\mt32emu-qt.ico"
   Delete "$INSTDIR\mt32emu-smf2wav.exe"
