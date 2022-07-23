@@ -3,7 +3,7 @@
 ;--------------------------------
 ; You must define these values
 
-  !define VERSION "2.6.2"
+  !define VERSION "2.7.0"
   !define PATCH  "0"
   !define INST_DIR "munt-${VERSION}-amd64"
 
