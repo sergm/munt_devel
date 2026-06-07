@@ -2,8 +2,9 @@
 
 ;--------------------------------
 ; You must define these values
+; VERSION should be best specified on the command line with /D switch, like this:
+;   makensis.exe /DVERSION=1.2.3 project.nsi
 
-  !define VERSION "2.7.0"
   !define PATCH  "0"
   !define INST_DIR "munt-${VERSION}-amd64"
 
